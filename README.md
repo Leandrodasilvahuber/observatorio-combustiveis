@@ -193,7 +193,7 @@ flowchart LR
 | Detalhe | Como fica |
 |---|---|
 | Autenticação da origem | Function URL com `AWS_IAM`; só esta distribuição chama (OAC + duas permissões no Terraform deste repositório) |
-| Cache | `UseOriginCacheControlHeaders-QueryStrings`: respeita o `max-age=300` da Lambda e põe a query string na chave (`?formato=json` e `?periodo=` são respostas diferentes) |
+| Cache | Política própria `dev-ecommerce-gasolina`: respeita o `max-age=300` da Lambda e põe a query string na chave (`?formato=json` e `?periodo=` são respostas diferentes). A gerenciada `UseOriginCacheControlHeaders-QueryStrings` não serve: inclui o `Host` na chave e o repassa à origem, e a Function URL responde 403 |
 | CSP do site | `script-src 'self'; style-src 'self'`: por isso CSS e JS são arquivos (`/gasolina/estilo.css`, `/gasolina/mapa.js`), e só o bloco de dados `application/json` é inline |
 | Cache de CSS/JS | Os links levam um hash do conteúdo (`?v=...`), então um deploy novo aparece sem invalidação |
 | Ligação entre os stacks | O Terraform publica o domínio da Function URL em `/observatorio/dev/api-origem` (SSM), que o template do site lê a cada deploy |
