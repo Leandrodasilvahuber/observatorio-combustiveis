@@ -118,13 +118,15 @@ lint: .venv ## Análise estática: ruff, shellcheck, terraform fmt/validate e tf
 
 # --- AWS -------------------------------------------------------------------
 
-# Pacote que a EC2 baixa a cada boot. Determinístico (ordem, datas e dono
-# fixos) para o Terraform só reenviar quando o conteúdo mudar.
+# Pacote que a EC2 baixa a cada boot. Determinístico (ordem, datas, dono e
+# permissões fixos) para o Terraform só reenviar quando o conteúdo mudar. Só
+# entram arquivos versionados: logs e caches locais (dbt/logs, __pycache__)
+# ficam de fora, e o pacote local sai igual ao do CI.
 pacote: ## Gera o pacote do projeto enviado para a EC2
 	@mkdir -p $(dir $(PACOTE))
-	@tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
-	  --exclude=__pycache__ --exclude=.pytest_cache \
-	  -cf - docker-compose.aws.yml airflow dags dbt ec2 postgres | gzip -n > $(PACOTE)
+	@git ls-files -z docker-compose.aws.yml airflow dags dbt ec2 postgres | \
+	  tar --null -T - --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner --mode=go-w \
+	  -cf - | gzip -n > $(PACOTE)
 	@echo "$(PACOTE) ($$(du -h $(PACOTE) | cut -f1))"
 
 # Bucket do state: leva o ID da conta, que não fica no repositório

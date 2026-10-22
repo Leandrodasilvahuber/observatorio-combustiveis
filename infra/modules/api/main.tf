@@ -21,6 +21,8 @@ data "archive_file" "api" {
   source_dir  = var.source_dir
   excludes    = ["__pycache__", "__pycache__/*"]
   output_path = "${path.root}/build/api.zip"
+  # Permissão fixa: o zip local sai igual ao do CI, apesar do umask
+  output_file_mode = "0644"
 }
 
 resource "aws_iam_role" "api" {
