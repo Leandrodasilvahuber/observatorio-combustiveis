@@ -6,9 +6,15 @@
 </head><body>
 <main>
   <header>
-    <h1>Preço dos combustíveis por estado</h1>
-    <p class="sub" id="sub"></p>
-    <p class="etanol" id="etanol"></p>
+    <div class="titulo">
+      <h1>Preço dos combustíveis por estado</h1>
+      <p class="sub" id="sub"></p>
+      <p class="etanol" id="etanol"></p>
+    </div>
+    <a class="video" href="https://www.youtube.com/watch?v=OwiRWHY5lxE" target="_blank" rel="noopener">
+      <svg viewBox="0 0 28 20" aria-hidden="true"><rect width="28" height="20" rx="5" fill="#ff0033"/><path d="M11 5.5v9l8-4.5z" fill="#fff"/></svg>
+      Vídeo explicativo
+    </a>
   </header>
   <div class="produtos" id="produtos" role="group" aria-label="Produto"></div>
   <div class="grade">
@@ -23,6 +29,30 @@
     </section>
   </div>
   <p class="nota">Cor pela posição no ranking de preço médio, do mais barato (verde) ao mais caro (vermelho), em cinco faixas. R$ por litro (m³ no GNV); mínimo e máximo na dica de cada estado. Cinza: sem coletas. Refinarias, portos, usinas e rotas em posição aproximada.</p>
+  <section class="cartao fluxo" aria-labelledby="titulo-fluxo">
+    <h2 id="titulo-fluxo">Como os dados chegam aqui</h2>
+    <ol class="etapas">
+      <li class="etapa"><small class="ferramenta">Fonte</small><b>ANP</b><span>Dados abertos: CSV das últimas 4 semanas</span></li>
+      <li class="grupo">
+        <span class="rotulo">EC2 · o EventBridge liga a cada 10 dias, roda uma vez e desliga</span>
+        <ol>
+          <li class="etapa"><small class="ferramenta airflow">Airflow</small><b>baixar_<wbr>para_<wbr>bronze</b><span>CSV como veio no S3 (bronze)</span></li>
+          <li class="etapa"><small class="ferramenta airflow">Airflow</small><b>validar</b><span>Confere o cabeçalho de cada CSV</span></li>
+          <li class="etapa"><small class="ferramenta airflow">Airflow</small><b>carregar_<wbr>raw</b><span>COPY no Postgres, tudo texto</span></li>
+          <li class="etapa"><small class="ferramenta dbt">dbt</small><b>dbt_<wbr>build</b><span>Staging e marts: tipos, dedup, agregados e testes</span></li>
+          <li class="etapa"><small class="ferramenta airflow">Airflow</small><b>publicar_<wbr>resultados</b><span>JSON do período no S3</span></li>
+        </ol>
+      </li>
+      <li class="grupo sempre">
+        <span class="rotulo">Sempre no ar</span>
+        <ol>
+          <li class="etapa"><small class="ferramenta aws">Lambda</small><b>Página</b><span>Lê o JSON e monta este mapa</span></li>
+          <li class="etapa"><small class="ferramenta aws">CloudFront</small><b>/gasolina</b><span>Cache e HTTPS</span></li>
+        </ol>
+      </li>
+    </ol>
+    <p class="nota">Se qualquer etapa falhar, nada é publicado e o site segue com o último período válido. Infra em Terraform, deploy pelo GitHub Actions.</p>
+  </section>
 </main>
 <div class="dica" id="dica" role="tooltip"></div>
 <script id="dados" type="application/json">__DADOS__</script>
