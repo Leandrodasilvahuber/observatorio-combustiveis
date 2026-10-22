@@ -113,7 +113,7 @@ resource "aws_iam_role" "deploy" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           # Só o job no ambiente "producao" deste repositório, que no GitHub
           # aceita apenas a branch main
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repo}:environment:producao"
+          "token.actions.githubusercontent.com:sub" = "${var.github_sub_prefixo}:environment:producao"
         }
       }
     }]

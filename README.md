@@ -239,7 +239,10 @@ flowchart LR
   todo push e pull request; o deploy só roda em push na `main`, depois dos dois.
 - **Sem chaves de acesso:** o GitHub Actions assume o papel
   `github-deploy-observatorio` via OIDC. O papel só aceita o ambiente
-  `producao` deste repositório, e o ambiente só aceita a branch `main`.
+  `producao` deste repositório, e o ambiente só aceita a branch `main`. O
+  GitHub identifica o repositório pelos IDs numéricos (subject imutável:
+  `repo:Leandrodasilvahuber@45015902/observatorio-combustiveis@1429861598`),
+  então recriar um repositório com o mesmo nome não herda o acesso.
 - **Um apply por vez:** `concurrency: deploy-aws` enfileira deploys seguidos
   em vez de rodar dois no mesmo state.
 - **Actions fixadas por SHA**, com a versão em comentário.
