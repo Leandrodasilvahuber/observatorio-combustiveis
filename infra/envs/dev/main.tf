@@ -15,8 +15,9 @@ terraform {
   # State na AWS, compartilhado entre a máquina local e o GitHub Actions. O
   # bucket é criado por infra/bootstrap. No LocalStack o override troca por
   # backend "local".
+  # O bucket (observatorio-tfstate-<conta>) vem no init:
+  #   terraform init -backend-config="bucket=observatorio-tfstate-<conta>"
   backend "s3" {
-    bucket       = "observatorio-tfstate-<conta>"
     key          = "dev/terraform.tfstate"
     region       = "us-east-1"
     use_lockfile = true

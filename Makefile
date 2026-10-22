@@ -127,9 +127,13 @@ pacote: ## Gera o pacote do projeto enviado para a EC2
 	  -cf - docker-compose.aws.yml airflow dags dbt ec2 postgres | gzip -n > $(PACOTE)
 	@echo "$(PACOTE) ($$(du -h $(PACOTE) | cut -f1))"
 
+# Bucket do state: leva o ID da conta, que não fica no repositório
+TF_STATE_BUCKET = observatorio-tfstate-$$(aws sts get-caller-identity --query Account --output text)
+
 aws-init: pacote
+	@[ -n "$$TF_VAR_cloudfront_distribution_arn" ] || { echo "defina TF_VAR_cloudfront_distribution_arn no .env"; exit 1; }
 	rm -f $(OVERRIDE) $(TFVARS_LS)
-	$(TF) init -reconfigure -input=false >/dev/null
+	$(TF) init -reconfigure -input=false -backend-config="bucket=$(TF_STATE_BUCKET)" >/dev/null
 
 plan-aws: aws-init ## Plano contra a AWS real (usa AWS_PROFILE)
 	$(TF) plan -input=false

@@ -15,8 +15,9 @@ terraform {
     }
   }
 
+  # O bucket (observatorio-tfstate-<conta>) vem no init:
+  #   terraform init -backend-config="bucket=observatorio-tfstate-<conta>"
   backend "s3" {
-    bucket       = "observatorio-tfstate-<conta>"
     key          = "bootstrap/terraform.tfstate"
     region       = "us-east-1"
     use_lockfile = true

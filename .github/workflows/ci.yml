@@ -116,6 +116,8 @@ jobs:
     concurrency:
       group: deploy-aws
       cancel-in-progress: false
+    env:
+      TF_VAR_cloudfront_distribution_arn: ${{ vars.CLOUDFRONT_DISTRIBUTION_ARN }}
     defaults:
       run:
         working-directory: infra/envs/dev
@@ -136,7 +138,11 @@ jobs:
         working-directory: .
         run: make pacote
 
-      - run: terraform init -input=false
+      # Bucket do state e CloudFront levam IDs da conta, que não ficam no código
+      - name: terraform init
+        run: |
+          conta=$(aws sts get-caller-identity --query Account --output text)
+          terraform init -input=false -backend-config="bucket=observatorio-tfstate-$conta"
 
       - run: terraform plan -input=false -out=plano.tfplan
 

@@ -31,6 +31,7 @@ desenvolvido localmente com LocalStack, e o mesmo Terraform sobe para a AWS.
 - [API](#api)
 - [Deploy na AWS](#deploy-na-aws)
 - [Operação](#operação)
+- [Sobre este repositório](#sobre-este-repositório)
 
 ## Arquitetura
 
@@ -261,6 +262,7 @@ flowchart LR
 | CI/CD | OIDC por ambiente; papel de deploy restrito a recursos `observatorio-dev-*`, sem poder alterar a si mesmo, e políticas gerenciadas limitadas às duas que o projeto usa |
 | Página | CSP do site sem inline; dados escapados para não fechar o `<script>`; texto dos dados só por `textContent` |
 | State | Bucket versionado, criptografado, sem acesso público, com lock nativo do S3 |
+| Repositório | Sem IDs da conta no código: o bucket do state e a CloudFront chegam por `-backend-config` e variável do GitHub |
 
 ## Custos
 
@@ -273,6 +275,12 @@ Estimativa mensal em us-east-1, com 3 ciclos por mês:
 | S3 | poucos MB + requisições | < US$ 0,10 |
 | Lambda + CloudFront | tráfego baixo, cache de 5 min | dentro do nível gratuito |
 | **Total** | | **~US$ 2,60** |
+
+**Teto da conta:** um orçamento de US$ 12/mês avisa por e-mail em 50%, 80% e
+100% (e quando a previsão passa de 100%). Ao estourar, uma ação automática do
+AWS Budgets anexa uma política de negação (`ec2:StartInstances`,
+`ec2:RunInstances` e afins) ao papel do Scheduler e ao papel de deploy, então o
+ciclo para de ligar a EC2 até a política ser retirada.
 
 ## Ambiente local
 
@@ -505,12 +513,14 @@ flowchart TB
    terraform -chdir=infra/bootstrap init
    terraform -chdir=infra/bootstrap apply
    rm infra/bootstrap/backend_override.tf
-   terraform -chdir=infra/bootstrap init -migrate-state
+   terraform -chdir=infra/bootstrap init -migrate-state \
+     -backend-config="bucket=observatorio-tfstate-$(aws sts get-caller-identity --query Account --output text)"
    terraform -chdir=infra/bootstrap output deploy_role_arn
    ```
 
-2. **GitHub:** variáveis do repositório `AWS_DEPLOY_ROLE_ARN` (output acima) e
-   `SITE_URL` (`https://www.leandrohuber.freeddns.org`), e o ambiente
+2. **GitHub:** variáveis do repositório `AWS_DEPLOY_ROLE_ARN` (output acima),
+   `CLOUDFRONT_DISTRIBUTION_ARN` (CloudFront do site) e `SITE_URL`
+   (`https://www.leandrohuber.freeddns.org`), e o ambiente
    `producao` restrito à branch `main`.
 3. **Push na `main`:** o CI roda a análise estática e os testes e depois o
    `terraform apply`. A EC2 liga, roda o primeiro ciclo (cerca de 10 min, com
@@ -546,3 +556,10 @@ O modo manutenção pode ser ativado pelo arquivo `/opt/observatorio/MANUTENCAO`
 na instância ou pelo objeto `s3://BUCKET/config/MANUTENCAO` (o
 `make aws-manutencao` usa este, que funciona com a máquina desligada). Com ele
 ativo, a EC2 liga e não roda nem desliga.
+
+## Sobre este repositório
+
+Projeto de portfólio: o código está aberto para leitura e download, mas o
+repositório não recebe issues, pull requests nem comentários. Nenhuma
+credencial fica no código: senhas são geradas na EC2, o deploy usa OIDC e os
+IDs da conta chegam por configuração.

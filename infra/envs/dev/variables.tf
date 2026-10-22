@@ -31,10 +31,11 @@ variable "api_url_auth_type" {
   default     = "AWS_IAM"
 }
 
+# Sem default: na AWS vem de TF_VAR_cloudfront_distribution_arn (variável do
+# GitHub ou .env local); vazio removeria a permissão da CloudFront na Lambda.
 variable "cloudfront_distribution_arn" {
   description = "CloudFront do site (www.leandrohuber.freeddns.org), dona da rota /gasolina"
   type        = string
-  default     = "arn:aws:cloudfront::<conta>:distribution/<id>"
 }
 
 # A conta tem cota de 10 execuções concorrentes e a AWS exige 10 sem reserva,
