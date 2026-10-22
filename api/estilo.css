@@ -1,53 +1,164 @@
 :root{
   color-scheme:light;
-  --fundo:#fcfcfb;--texto:#0b0b0b;--texto-2:#52514e;--linha:#e4e3df;--sem-dado:#e4e3df;
-  --f1:#86b6ef;--f2:#5598e7;--f3:#2a78d6;--f4:#1c5cab;--f5:#104281;--destaque:#0b0b0b;
+  --fundo:#f7f6f2;--cartao:#ffffff;--texto:#1d1b26;--texto-2:#5d5a6b;--linha:#e6e3dc;--sem-dado:#dcd9d2;
+  --f1:#2fb876;--f2:#9ccf4f;--f3:#ffc93c;--f4:#ff8a3d;--f5:#e8455c;--destaque:#1d1b26;
+  --refinaria:#ff8a3d;--refinaria-borda:#c95a12;--porto:#4aa8ff;--porto-borda:#1f5fa8;--etanol:#ffe066;--etanol-borda:#2e8b3e;--rosto:#2a2233;
+  --acento:#7a5cff;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   color-scheme:dark;
-  --fundo:#1a1a19;--texto:#f0efec;--texto-2:#c3c2b7;--linha:#383835;--sem-dado:#383835;
-  --f1:#184f95;--f2:#256abf;--f3:#3987e5;--f4:#6da7ec;--f5:#9ec5f4;--destaque:#f0efec;
+  --fundo:#17161c;--cartao:#211f28;--texto:#f1eff7;--texto-2:#b9b5c8;--linha:#35323f;--sem-dado:#3a3744;
+  --f1:#27a868;--f2:#8bbf42;--f3:#f0b92e;--f4:#f27a2f;--f5:#d93a52;--destaque:#ffffff;
+  --acento:#a08cff;
 }}
 :root[data-theme="dark"]{
   color-scheme:dark;
-  --fundo:#1a1a19;--texto:#f0efec;--texto-2:#c3c2b7;--linha:#383835;--sem-dado:#383835;
-  --f1:#184f95;--f2:#256abf;--f3:#3987e5;--f4:#6da7ec;--f5:#9ec5f4;--destaque:#f0efec;
+  --fundo:#17161c;--cartao:#211f28;--texto:#f1eff7;--texto-2:#b9b5c8;--linha:#35323f;--sem-dado:#3a3744;
+  --f1:#27a868;--f2:#8bbf42;--f3:#f0b92e;--f4:#f27a2f;--f5:#d93a52;--destaque:#ffffff;
+  --acento:#a08cff;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--fundo);color:var(--texto);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:1080px;margin:0 auto;padding:24px 16px 40px}
-h1{font-size:1.6rem;margin:0 0 4px;line-height:1.2}
-.sub{color:var(--texto-2);margin:0 0 20px}
-.produtos{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:20px}
-.produtos button{font:inherit;font-size:.9rem;padding:6px 12px;border-radius:999px;cursor:pointer;
-  border:1px solid var(--linha);background:transparent;color:var(--texto)}
-.produtos button[aria-pressed="true"]{background:var(--texto);color:var(--fundo);border-color:var(--texto)}
-.grade{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:32px;align-items:start}
-@media (max-width:760px){.grade{grid-template-columns:minmax(0,1fr)}}
-svg{width:100%;height:auto;display:block}
-svg path{stroke:var(--fundo);stroke-width:1;stroke-linejoin:round;cursor:pointer;outline:none}
-svg #contorno{fill:none;stroke:var(--destaque);stroke-width:2;pointer-events:none}
-.legenda{display:flex;gap:2px;margin:12px 0 4px}
-.legenda div{flex:1;font-size:.75rem;color:var(--texto-2)}
-.legenda span{display:block;height:10px;border-radius:2px;margin-bottom:4px}
-.nota{font-size:.8rem;color:var(--texto-2);margin:0}
-table{border-collapse:collapse;width:100%;font-size:.9rem;font-variant-numeric:tabular-nums}
-th,td{padding:5px 8px;border-bottom:1px solid var(--linha);text-align:right}
-th{font-weight:600;color:var(--texto-2);font-size:.8rem}
+body{margin:0;background:var(--fundo);color:var(--texto);font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1280px;margin:0 auto;padding:14px 16px 20px}
+header{margin-bottom:10px}
+h1{font-size:1.35rem;margin:0 0 2px;line-height:1.2}
+h1::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;vertical-align:2px;
+  background:linear-gradient(135deg,var(--f1),var(--f3),var(--f5))}
+.sub{color:var(--texto-2);margin:0;font-size:.85rem}
+.etanol{margin:6px 0 0;font-size:.85rem;color:var(--texto-2)}
+.etanol:empty{display:none}
+.etanol b{color:var(--f1)}
+.produtos{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.produtos button{font:inherit;font-size:.85rem;padding:4px 12px 4px 8px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--linha);background:var(--cartao);color:var(--texto);display:inline-flex;align-items:center;gap:6px}
+.produtos button::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--cor-produto,var(--acento))}
+.produtos button[aria-pressed="true"]{background:var(--cor-produto,var(--acento));border-color:var(--cor-produto,var(--acento));
+  color:#fff;font-weight:600}
+.produtos button[aria-pressed="true"]::before{background:#fff}
+.produtos [data-produto="GASOLINA"]{--cor-produto:#e8455c}
+.produtos [data-produto="GASOLINA ADITIVADA"]{--cor-produto:#c2389b}
+.produtos [data-produto="ETANOL"]{--cor-produto:#1f9d5c}
+.produtos [data-produto="DIESEL"]{--cor-produto:#d9731f}
+.produtos [data-produto="DIESEL S10"]{--cor-produto:#b38600}
+.produtos [data-produto="GNV"]{--cor-produto:#2f80d6}
+.grade{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;align-items:stretch}
+.cartao{background:var(--cartao);border:1px solid var(--linha);border-radius:14px;padding:10px 12px}
+/* O mapa ocupa a altura da tela; legenda e camadas ficam por cima, nos cantos
+   vazios (oceanos). O cartão do ranking não dita a altura da linha (contain:size):
+   fica alinhado com o do mapa e rola por dentro. */
+.cartao-mapa{position:relative}
+#mapa{width:100%;height:calc(100vh - 225px);min-height:380px;display:block}
+.tabela{contain:size;overflow:auto;padding-top:0;-webkit-overflow-scrolling:touch}
+.sobre-mapa{position:absolute;background:color-mix(in srgb,var(--cartao) 82%,transparent);border-radius:10px;padding:6px 8px}
+.legenda{left:10px;bottom:10px;width:min(300px,45%)}
+#camadas{right:10px;top:10px}
+#camadas:empty{display:none}
+th:nth-child(n+4),td:nth-child(n+4){display:none}
+td:nth-child(2){white-space:nowrap}
+#mapa .uf{stroke:var(--cartao);stroke-width:1;stroke-linejoin:round;cursor:pointer;outline:none;transition:fill .25s}
+#mapa #contorno{fill:none;stroke:var(--destaque);stroke-width:2;pointer-events:none}
+#mapa .ponto{cursor:pointer}
+#mapa .boneco{transform-box:fill-box;transform-origin:50% 100%;transition:transform .15s}
+#mapa .ponto:hover .boneco,#mapa .ponto:focus .boneco{transform:scale(1.35) translateY(-1px)}
+#mapa .ponto{outline:none}
+/* "backwards": depois de surgir, a animação larga o transform e o hover volta a valer. */
+#mapa .boneco{animation:surgir .4s cubic-bezier(.3,1.6,.6,1) backwards}
+@keyframes surgir{from{opacity:0;transform:translateY(-6px) scale(.6)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){#mapa .boneco{animation:none}#mapa .boneco,#mapa .uf{transition:none}}
+.gota{stroke-width:1.2;stroke-linejoin:round}
+/* Contorno claro para o boneco não sumir em estado da mesma cor. */
+.halo-boneco{fill:none;stroke:#fff;stroke-width:5;stroke-linejoin:round;opacity:.9}
+.gota.refinaria{fill:var(--refinaria);stroke:var(--refinaria-borda)}
+.gota.alcool{fill:var(--etanol);stroke:var(--etanol-borda)}
+.casco{fill:var(--porto);stroke:var(--porto-borda);stroke-width:1.2;stroke-linejoin:round}
+.cabine{fill:#fff;stroke:var(--porto-borda);stroke-width:.8}
+.bandeira{fill:#ffc93c;stroke:var(--porto-borda);stroke-width:.6}
+.onda{fill:none;stroke:var(--porto-borda);stroke-width:.9;stroke-linecap:round;opacity:.7}
+/* Rotas: vários traços sobrepostos (mapa.js, TRACOS) formam cano, trilho e estrada. */
+#mapa .rota path{fill:none;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+#mapa .rota-halo{stroke:var(--cartao);stroke-width:9;opacity:.85}
+#mapa .rota:hover .rota-halo,#mapa .rota:focus-within .rota-halo{stroke:var(--destaque);opacity:.6}
+#mapa .rota .rota-alvo{stroke:transparent;stroke-width:14;pointer-events:stroke;cursor:pointer;outline:none}
+.cano-borda{stroke:#1f5fa8;stroke-width:6}
+.cano{stroke:#6ec0ff;stroke-width:4}
+.cano-fluxo{stroke:#fff;stroke-width:1.6;stroke-dasharray:1.5 5;animation:fluir 1s linear infinite}
+@keyframes fluir{to{stroke-dashoffset:-6.5}}
+/* Ferrovia: dois trilhos (traço escuro vazado por um claro) cortados pelos dormentes. */
+.trilho{stroke:#4b4656;stroke-width:4.6}
+.trilho-vao{stroke:#efe6d8;stroke-width:2.4}
+#mapa .rota .trilho-dormente,.amostra .trilho-dormente{stroke:#7a4f2e;stroke-width:8;stroke-dasharray:1.4 3;stroke-linecap:butt}
+.estrada{stroke:#3d3a45;stroke-width:5}
+.estrada-faixa{stroke:#ffd84d;stroke-width:1.1;stroke-dasharray:3 3}
+@media (prefers-reduced-motion:reduce){.cano-fluxo{animation:none}}
+.chama{fill:#5ab8ff;stroke:#1f5fa8;stroke-width:1.2;stroke-linejoin:round}
+.chama-miolo{fill:#d6f0ff}
+.trem{fill:#8c5cff;stroke:#5a32c8;stroke-width:1.2}
+.trem-chamine{fill:#4b4656}
+.janela{fill:#e8f6ff;stroke:#4b4656;stroke-width:.7}
+.roda{fill:#3d3a45;stroke:#fff;stroke-width:.8}
+.tanque{fill:#ff6fae;stroke:#c23577;stroke-width:1.2}
+.cabine-caminhao{fill:#ffd84d;stroke:#c29a00;stroke-width:1.2}
+.folha{fill:#8ee06b;stroke:var(--etanol-borda);stroke-width:.8}
+.chamine{fill:#8a8396;stroke:var(--refinaria-borda);stroke-width:.8}
+.fumaca{fill:#fff;stroke:#c9c4d3;stroke-width:.6}
+.olho{fill:var(--rosto)}
+.brilho{fill:#fff;opacity:.85}
+.boca{fill:none;stroke:var(--rosto);stroke-width:1;stroke-linecap:round}
+.bochecha{fill:#ff6f91;opacity:.55}
+.legenda{display:flex;gap:2px}
+.legenda div{flex:1;font-size:.72rem;color:var(--texto-2);font-variant-numeric:tabular-nums}
+.legenda span{display:block;height:8px;border-radius:4px;margin-bottom:3px}
+.mostrar-grupo{display:flex;flex-direction:column;gap:4px}
+.mostrar{display:inline-flex;align-items:center;gap:6px;font-size:.84rem;cursor:pointer;width:max-content}
+.mostrar svg{width:21px;height:26px;flex:none}
+.mostrar svg.amostra{width:30px;height:12px}
+.amostra path{fill:none;stroke-linecap:round;stroke-linejoin:round}
+.nota{font-size:.74rem;color:var(--texto-2);margin:8px 0 0}
+table{border-collapse:collapse;width:100%;font-size:.84rem;font-variant-numeric:tabular-nums}
+th,td{padding:3px 6px;border-bottom:1px solid var(--linha);text-align:right}
+thead th{position:sticky;top:0;background:var(--cartao);padding-top:10px;z-index:1}
+th{font-weight:600;color:var(--texto-2);font-size:.76rem}
 th:nth-child(2),td:nth-child(2){text-align:left}
 td:first-child{color:var(--texto-2);width:2.5em}
 tbody tr{cursor:default}
 tbody tr.ativo{background:var(--linha)}
-.cor{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:8px;vertical-align:-1px}
-.dica{position:fixed;pointer-events:none;z-index:10;min-width:200px;padding:10px 12px;border-radius:8px;
-  background:var(--fundo);color:var(--texto);border:1px solid var(--linha);box-shadow:0 4px 16px rgba(0,0,0,.18);
-  font-size:.85rem;font-variant-numeric:tabular-nums;opacity:0;transition:opacity .1s}
+.cor{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.bandeira-uf{display:inline-block;width:21px;height:15px;border-radius:3px;margin-right:6px;vertical-align:-3px;
+  background-repeat:no-repeat;box-shadow:0 0 0 1px var(--linha)}
+.dica{position:fixed;pointer-events:none;z-index:10;min-width:200px;max-width:280px;padding:10px 12px;border-radius:10px;
+  background:var(--cartao);color:var(--texto);border:1px solid var(--linha);box-shadow:0 6px 20px rgba(0,0,0,.18);
+  font-size:.82rem;font-variant-numeric:tabular-nums;opacity:0;transition:opacity .1s}
 .dica.visivel{opacity:1}
-.dica strong{display:block;font-size:.95rem}
+.dica strong{display:block;font-size:.92rem}
 .dica .pos{color:var(--texto-2);margin-bottom:6px}
 .dica dl{display:grid;grid-template-columns:auto auto;gap:2px 16px;margin:0}
 .dica dt{color:var(--texto-2)}.dica dd{margin:0;text-align:right}
-.etanol{margin-top:28px;padding-top:16px;border-top:1px solid var(--linha);color:var(--texto-2)}
-.etanol b{color:var(--texto)}
+.dica .perto{margin-top:6px;padding-top:6px;border-top:1px solid var(--linha);color:var(--texto-2)}
+.dica .perto b{color:var(--texto)}
 .erro p{color:var(--texto-2)}
-.erro a{color:var(--f3)}
+.erro a{color:var(--acento)}
+/* Celular: depois das regras base para valer por cima delas. */
+@media (max-width:760px){
+  main{padding:10px 10px 16px}
+  h1{font-size:1.15rem}
+  .grade{grid-template-columns:minmax(0,1fr);gap:10px}
+  .cartao{padding:8px}
+  #mapa{height:auto;max-height:65vh;min-height:0}
+  .tabela{contain:none;max-height:50vh}
+  .sobre-mapa{position:static;background:none;padding:6px 0 0;width:auto}
+  .mostrar-grupo{flex-direction:row;flex-wrap:wrap;gap:4px 14px}
+  th:nth-child(n+4),td:nth-child(n+4){display:table-cell}
+  td:nth-child(2){white-space:normal}
+  /* Botões de produto numa linha só, rolando para o lado. */
+  .produtos{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+  .produtos button{flex:none}
+  .legenda div{font-size:.62rem}
+  .dica{max-width:calc(100vw - 16px);min-width:0}
+}
+@media (max-width:480px){
+  table{font-size:.78rem}
+  th,td{padding:3px 4px}
+  /* A bandeira já identifica a linha; a bolinha da faixa sai para a tabela caber. */
+  .cor{display:none}
+  .bandeira-uf{width:18px;height:13px}
+}

@@ -8,7 +8,7 @@ publica a cada 10 dias um mapa do Brasil com o ranking de preço por estado.
 
 **No ar:** <https://www.leandrohuber.freeddns.org/gasolina>
 
-![Mapa do Brasil com o preço médio da gasolina por estado](docs/mapa.png)
+![Mapa do Brasil com o preço médio da gasolina por estado, refinarias, portos, ferrovias e a lista de estados com bandeiras](docs/mapa.png)
 
 A ideia central é **pagar só pelo que roda**: a página fica sempre no ar
 (Lambda + CloudFront, centavos por mês), enquanto o pipeline pesado (Postgres,
@@ -90,7 +90,7 @@ Quatro decisões explicam o desenho:
 | **EC2 que liga e desliga** em vez de RDS/MWAA | Postgres e Airflow gerenciados custariam dezenas de dólares por mês para rodar 30 min a cada 10 dias. A EC2 parada custa só o disco. |
 | **A Lambda nunca consulta o banco** | O banco fica desligado quase o tempo todo. O pipeline publica JSON prontos no S3 e a Lambda só lê. |
 | **dbt dentro do Postgres** | As transformações e os testes de qualidade ficam versionados em SQL. Quem grava no S3 é a task `publicar_resultados`. |
-| **Página sem dependências externas** | Mapa (SVG), CSS e JS saem da própria Lambda: nada de CDN nem outra requisição, e funciona com a CSP rígida do site. |
+| **Página sem dependências externas** | Mapa (SVG), CSS, JS e bandeiras saem da própria Lambda: nada de CDN, e funciona com a CSP rígida do site. |
 
 ## Ciclo de 10 dias na AWS
 
@@ -201,18 +201,38 @@ flowchart LR
 
 ### O mapa
 
-- Os estados com dados do produto são ordenados pelo preço médio e divididos em
-  **cinco faixas de ranking** (do mais barato ao mais caro). A cor mostra a
-  faixa, não o valor absoluto; preços empatados ficam na mesma faixa e estados
-  sem coletas ficam em cinza.
-- Ao passar o mouse (ou focar pelo teclado) num estado aparecem a posição no
-  ranking, preço médio, mínimo, máximo e coletas. A tabela ao lado destaca o
-  mesmo estado.
-- Seletor de produto (gasolina comum, aditivada, etanol, diesel, diesel S10,
-  GNV), tema claro e escuro, layout de celular.
-- Os contornos vêm de `api/mapa_brasil.json`, gerado por `scripts/gerar_mapa.py`
+- **Cores pelo ranking:** os estados com dados do produto são ordenados pelo
+  preço médio e divididos em **cinco faixas**, do verde (mais barato) ao
+  vermelho (mais caro). A cor mostra a faixa, não o valor absoluto; preços
+  empatados ficam na mesma faixa e estados sem coletas ficam em cinza.
+- **Dica de cada estado:** ao passar o mouse, tocar ou focar pelo teclado,
+  aparecem bandeira, posição no ranking, preço médio, mínimo, máximo, coletas
+  e a refinaria, o porto ou o polo de etanol mais perto (em linha reta, a
+  partir do centro do estado). A lista ao lado destaca o mesmo estado.
+- **Camadas por produto**, cada uma com um boneco próprio e liga/desliga no
+  canto do mapa:
+
+  | Produto | Camadas |
+  |---|---|
+  | Gasolina, aditivada, diesel, diesel S10 | 14 refinarias, 14 portos que recebem combustível importado, ferrovias de combustível (Paulínia → Rondonópolis e Itaqui → Porto Nacional) e a BR-174 (Manaus → Roraima) |
+  | Etanol | 10 regiões com mais usinas |
+  | GNV | gasoduto Bolívia–Brasil (Gasbol), com o gás animado correndo pelo cano |
+
+  Ferrovias são desenhadas com trilhos e dormentes, e a rodovia com faixa
+  central. As posições são aproximadas (pela cidade) e ficam em
+  `api/instalacoes.json`; os pontos são projetados no mesmo sistema do mapa
+  (`projecao` em `api/mapa_brasil.json`), e bonecos sobrepostos são afastados
+  só na tela.
+- **Layout:** no computador, mapa e ranking cabem numa tela, com os cards
+  alinhados e a lista rolando por dentro. No celular, o mapa vem primeiro, a
+  lista rola na própria caixa e os botões de produto rolam para o lado. Tema
+  claro e escuro.
+- **Contornos:** `api/mapa_brasil.json`, gerado por `scripts/gerar_mapa.py`
   a partir da malha oficial do IBGE (equiretangular, simplificada com
   Douglas-Peucker, 32 KB).
+- **Bandeiras:** as 27 numa imagem só (`api/bandeiras.png`, 28 KB), gerada por
+  `scripts/gerar_bandeiras.py` a partir do Wikimedia Commons e servida pela
+  Lambda, já que a CSP não permite imagens de outros domínios.
 
 ## CI/CD
 
@@ -380,8 +400,11 @@ dbt/                               Projeto dbt (models, testes singulares, profi
 api/handler.py                     Lambda: rotas, JSON, mapa e arquivos da página
 api/pagina.html                    Página do mapa (dados entram no lugar de __DADOS__)
 api/estilo.css, api/mapa.js        CSS e JS da página (servidos pela Lambda)
-api/mapa_brasil.json               Contornos das UFs em SVG
+api/mapa_brasil.json               Contornos das UFs em SVG e a projeção usada nos pontos
+api/instalacoes.json               Refinarias, portos, polos de etanol e rotas (lat/lon)
+api/bandeiras.png                  Bandeiras das 27 UFs numa imagem só
 scripts/gerar_mapa.py              Regera o mapa_brasil.json a partir do IBGE
+scripts/gerar_bandeiras.py         Regera o bandeiras.png a partir do Wikimedia Commons
 ec2/ciclo.sh                       Ciclo da EC2: sobe, roda a DAG, envia logs, desliga
 ec2/encerrar_execucoes_pendentes.py  Encerra execuções presas antes do disparo
 postgres/init/                     Cria o banco do Airflow na primeira subida
@@ -453,7 +476,7 @@ localmente, na raiz.
 | `GET /gasolina` | Mapa do último período |
 | `GET /gasolina?formato=json` | JSON do último período (`resultados/latest.json`) |
 | `GET /gasolina?periodo=AAAA-MM-DD` | Período que termina nessa data (mapa, ou JSON com `formato=json`) |
-| `GET /gasolina/estilo.css`, `/gasolina/mapa.js` | Arquivos da página |
+| `GET /gasolina/estilo.css`, `/gasolina/mapa.js`, `/gasolina/bandeiras.png` | Arquivos da página (o PNG vai em base64, `isBase64Encoded`) |
 | período em formato inválido | 400 (página HTML no mapa, JSON com `formato=json`) |
 | período inexistente | 404 (idem; antes do primeiro ciclo a página avisa que ainda não há período publicado) |
 | outro caminho / método | 404 / 405 |
@@ -551,6 +574,8 @@ mesmo state no S3.
 | Reprocessar tudo | `dbt build --full-refresh` dentro do contêiner do Airflow |
 | Mexer na EC2 | Ativar a manutenção antes de qualquer reboot e desativar ao terminar |
 | Regerar o mapa | `python scripts/gerar_mapa.py` (só se mudar a malha ou a simplificação) |
+| Regerar as bandeiras | `python scripts/gerar_bandeiras.py` (precisa do Pillow) |
+| Incluir refinaria, porto ou rota | Editar `api/instalacoes.json` (lat/lon; rotas são listas de `[lon, lat]`) |
 
 O modo manutenção pode ser ativado pelo arquivo `/opt/observatorio/MANUTENCAO`
 na instância ou pelo objeto `s3://BUCKET/config/MANUTENCAO` (o

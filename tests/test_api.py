@@ -1,3 +1,4 @@
+import base64
 import io
 import json
 import re
@@ -189,6 +190,9 @@ def test_estaticos_com_versao(s3):
     assert css["headers"]["Content-Type"].startswith("text/css")
     assert js["headers"]["Content-Type"].startswith("text/javascript")
     assert "contorno" in js["body"]
+    png = handler.lambda_handler(evento(path="/bandeiras.png"), None)
+    assert png["headers"]["Content-Type"] == "image/png"
+    assert png["isBase64Encoded"] and base64.b64decode(png["body"]).startswith(b"\x89PNG")
     assert s3.chaves_lidas == ["resultados/latest.json"]
 
 

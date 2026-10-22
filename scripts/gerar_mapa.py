@@ -87,7 +87,19 @@ def gerar(malha: dict) -> dict:
 
     if len(ufs) != 27:
         raise ValueError(f"esperava 27 UFs na malha, vieram {len(ufs)}")
-    return {"largura": LARGURA, "altura": round((lat_max - lat_min) * escala), "ufs": dict(sorted(ufs.items()))}
+    return {
+        "largura": LARGURA,
+        "altura": round((lat_max - lat_min) * escala),
+        # Para a página posicionar pontos (lon, lat) no mesmo sistema:
+        # x = (lon - lon_min) * k * escala, y = (lat_max - lat) * escala.
+        "projecao": {
+            "lon_min": round(lon_min, 6),
+            "lat_max": round(lat_max, 6),
+            "k": round(k, 6),
+            "escala": round(escala, 6),
+        },
+        "ufs": dict(sorted(ufs.items())),
+    }
 
 
 def main() -> None:

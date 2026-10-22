@@ -11,6 +11,7 @@ GET <base>?periodo=AAAA-MM-DD    período que termina nessa data (mapa ou JSON)
 GET <base>/estilo.css, mapa.js   arquivos da página (a CSP do site bloqueia inline)
 """
 
+import base64
 import hashlib
 import html
 import json
@@ -39,9 +40,18 @@ def _ler(nome: str) -> str:
         return f.read()
 
 
+def _ler_binario(nome: str) -> bytes:
+    with open(os.path.join(_PASTA, nome), "rb") as f:
+        return f.read()
+
+
 # Contornos das UFs em SVG, gerados por scripts/gerar_mapa.py a partir da malha
 # de estados do IBGE.
 MAPA = json.loads(_ler("mapa_brasil.json"))
+
+# Refinarias de petróleo e polos de usinas de etanol (posição aproximada da
+# cidade), desenhados por cima do mapa.
+INSTALACOES = json.loads(_ler("instalacoes.json"))
 
 # Página do mapa. Os dados entram no lugar de __DADOS__; o resto é estático.
 PAGINA = _ler("pagina.html")
@@ -59,8 +69,13 @@ PAGINA_ERRO = """<!doctype html>
 ESTATICOS = {
     "/estilo.css": (_ler("estilo.css"), "text/css; charset=utf-8"),
     "/mapa.js": (_ler("mapa.js"), "text/javascript; charset=utf-8"),
+    # Bandeiras das UFs lado a lado, geradas por scripts/gerar_bandeiras.py.
+    "/bandeiras.png": (_ler_binario("bandeiras.png"), "image/png"),
 }
-VERSAO = {nome: hashlib.sha256(corpo.encode()).hexdigest()[:10] for nome, (corpo, _) in ESTATICOS.items()}
+VERSAO = {
+    nome: hashlib.sha256(corpo if isinstance(corpo, bytes) else corpo.encode()).hexdigest()[:10]
+    for nome, (corpo, _) in ESTATICOS.items()
+}
 
 # fmt: off
 NOMES_UF = {
@@ -85,6 +100,13 @@ def _estatico(nome: str) -> str:
 
 
 def _resposta(status: int, corpo, tipo="application/json; charset=utf-8") -> dict:
+    if isinstance(corpo, bytes):
+        return {
+            "statusCode": status,
+            "headers": {**CABECALHOS, "Content-Type": tipo},
+            "body": base64.b64encode(corpo).decode(),
+            "isBase64Encoded": True,
+        }
     if not isinstance(corpo, str):
         corpo = json.dumps(corpo, ensure_ascii=False)
     return {"statusCode": status, "headers": {**CABECALHOS, "Content-Type": tipo}, "body": corpo}
@@ -119,7 +141,9 @@ def _html(resumo: dict) -> str:
         "precos": resumo["preco_medio_por_uf"],
         "etanol": {k: v for k, v in resumo["etanol_vs_gasolina"].items() if k != "melhores_para_etanol"},
         "mapa": MAPA,
+        "instalacoes": INSTALACOES,
         "nomes": NOMES_UF,
+        "bandeiras": _estatico("/bandeiras.png"),
     }
     # "<" escapado para o JSON não fechar a tag <script> antes da hora.
     json_dados = json.dumps(dados, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
