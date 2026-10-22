@@ -171,8 +171,11 @@ resource "aws_instance" "runner" {
 
   # O user_data só roda no primeiro boot, e uma AMI nova recriaria a
   # instância (e o volume do Postgres). Mudanças nesses campos são ignoradas.
+  # Desligada, a instância não tem IP público e a AWS devolve
+  # associate_public_ip_address = false: sem ignorar, todo deploy com a
+  # máquina parada a recriaria.
   lifecycle {
-    ignore_changes = [ami, user_data]
+    ignore_changes = [ami, user_data, associate_public_ip_address]
   }
 
   depends_on = [aws_s3_object.pacote, aws_iam_role_policy.bucket]
