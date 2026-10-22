@@ -259,7 +259,7 @@ flowchart LR
 | EC2 | IMDSv2 obrigatório (hop limit 2), EBS criptografado, senhas geradas no primeiro boot |
 | IAM | Um papel por componente com privilégio mínimo: EC2 (bucket do projeto), Lambda (só `resultados/`, sem `ListBucket`), Scheduler (ligar só esta instância) |
 | Lambda | Function URL com `AWS_IAM`, chamada só pela CloudFront via OAC; o código só muda via Terraform |
-| CI/CD | OIDC por ambiente; papel de deploy restrito a recursos `observatorio-dev-*`, sem poder alterar a si mesmo, e políticas gerenciadas limitadas às duas que o projeto usa |
+| CI/CD | OIDC por ambiente; papel de deploy restrito a recursos `observatorio-dev-*`, sem poder alterar a si mesmo. Todo papel que ele cria ou altera carrega a política-limite `observatorio-dev-limite-papeis` (permissions boundary), que ele não consegue remover: nenhuma política inline vai além do bucket do projeto, logs, Session Manager e ligar a EC2. `PassRole` só para EC2, Lambda e Scheduler, e `RunInstances` só para t3.micro/small/medium |
 | Página | CSP do site sem inline; dados escapados para não fechar o `<script>`; texto dos dados só por `textContent` |
 | State | Bucket versionado, criptografado, sem acesso público, com lock nativo do S3 |
 | Repositório | Sem IDs da conta no código: o bucket do state e a CloudFront chegam por `-backend-config` e variável do GitHub |

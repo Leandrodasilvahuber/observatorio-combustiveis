@@ -66,3 +66,9 @@ variable "log_retention_days" {
   type    = number
   default = 14
 }
+
+variable "permissions_boundary" {
+  description = "ARN da política-limite dos papéis (null no LocalStack)"
+  type        = string
+  default     = null
+}

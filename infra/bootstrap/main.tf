@@ -97,6 +97,60 @@ data "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
 }
 
+# Limite (permissions boundary) de todo papel observatorio-dev-*: o deploy só
+# cria ou altera papéis que o carregam, então nenhuma política inline que ele
+# escreva dá mais do que isto. Cobre o que os três papéis do projeto usam:
+# EC2 (bucket + Session Manager), Lambda (resultados + logs) e Scheduler.
+resource "aws_iam_policy" "limite_papeis" {
+  name        = "${local.prefixo}-limite-papeis"
+  description = "Teto de permissões dos papéis ${local.prefixo}-* criados pelo deploy"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "BucketDoProjeto"
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket", "s3:GetObject", "s3:PutObject"]
+        Resource = ["arn:aws:s3:::${local.prefixo}-*", "arn:aws:s3:::${local.prefixo}-*/*"]
+      },
+      {
+        Sid      = "LogsDaLambda"
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "*"
+      },
+      {
+        # Mesmas ações da AmazonSSMManagedInstanceCore
+        Sid    = "SessionManager"
+        Effect = "Allow"
+        Action = [
+          "ssm:DescribeAssociation", "ssm:GetDeployablePatchSnapshotForInstance",
+          "ssm:GetDocument", "ssm:DescribeDocument", "ssm:GetManifest",
+          "ssm:GetParameter", "ssm:GetParameters", "ssm:ListAssociations",
+          "ssm:ListInstanceAssociations", "ssm:PutInventory", "ssm:PutComplianceItems",
+          "ssm:PutConfigurePackageResult", "ssm:UpdateAssociationStatus",
+          "ssm:UpdateInstanceAssociationStatus", "ssm:UpdateInstanceInformation",
+          "ssmmessages:CreateControlChannel", "ssmmessages:CreateDataChannel",
+          "ssmmessages:OpenControlChannel", "ssmmessages:OpenDataChannel",
+          "ec2messages:AcknowledgeMessage", "ec2messages:DeleteMessage",
+          "ec2messages:FailMessage", "ec2messages:GetEndpoint",
+          "ec2messages:GetMessages", "ec2messages:SendReply",
+        ]
+        Resource = "*"
+      },
+      {
+        # Scheduler: ligar só instâncias do projeto (tag padrão do provider)
+        Sid       = "LigarRunner"
+        Effect    = "Allow"
+        Action    = "ec2:StartInstances"
+        Resource  = "arn:aws:ec2:${var.region}:${local.conta}:instance/*"
+        Condition = { StringEquals = { "aws:ResourceTag/Project" = var.project } }
+      },
+    ]
+  })
+}
+
 # Nome fora do prefixo observatorio-dev-*: o deploy não consegue alterar o
 # próprio papel.
 resource "aws_iam_role" "deploy" {
@@ -173,13 +227,14 @@ resource "aws_iam_role_policy" "deploy" {
         Resource = "*"
       },
       {
+        # Ações que não dão permissão a ninguém: livres dentro do prefixo.
         Sid    = "PapeisDoProjeto"
         Effect = "Allow"
         Action = [
-          "iam:CreateRole", "iam:DeleteRole", "iam:GetRole", "iam:UpdateRole",
+          "iam:DeleteRole", "iam:GetRole", "iam:UpdateRole",
           "iam:UpdateAssumeRolePolicy", "iam:TagRole", "iam:UntagRole", "iam:ListRoleTags",
-          "iam:PutRolePolicy", "iam:GetRolePolicy", "iam:DeleteRolePolicy", "iam:ListRolePolicies",
-          "iam:ListAttachedRolePolicies", "iam:ListInstanceProfilesForRole", "iam:PassRole",
+          "iam:GetRolePolicy", "iam:DeleteRolePolicy", "iam:ListRolePolicies",
+          "iam:ListAttachedRolePolicies", "iam:ListInstanceProfilesForRole",
           "iam:CreateInstanceProfile", "iam:DeleteInstanceProfile", "iam:GetInstanceProfile",
           "iam:AddRoleToInstanceProfile", "iam:RemoveRoleFromInstanceProfile",
           "iam:TagInstanceProfile", "iam:UntagInstanceProfile", "iam:ListInstanceProfileTags",
@@ -190,7 +245,19 @@ resource "aws_iam_role_policy" "deploy" {
         ]
       },
       {
-        # Políticas gerenciadas: só as duas que o projeto usa.
+        # Criar papel ou escrever política inline só com o limite no papel.
+        # Sem iam:DeleteRolePermissionsBoundary, o limite não sai depois.
+        Sid      = "PapeisComLimite"
+        Effect   = "Allow"
+        Action   = ["iam:CreateRole", "iam:PutRolePolicy", "iam:PutRolePermissionsBoundary"]
+        Resource = "arn:aws:iam::${local.conta}:role/${local.prefixo}-*"
+        Condition = {
+          ArnEquals = { "iam:PermissionsBoundary" = aws_iam_policy.limite_papeis.arn }
+        }
+      },
+      {
+        # Políticas gerenciadas: só as duas que o projeto usa, e só em papel
+        # que já carrega o limite.
         Sid      = "PoliticasGerenciadas"
         Effect   = "Allow"
         Action   = ["iam:AttachRolePolicy", "iam:DetachRolePolicy"]
@@ -201,6 +268,19 @@ resource "aws_iam_role_policy" "deploy" {
               "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
               "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
             ]
+            "iam:PermissionsBoundary" = aws_iam_policy.limite_papeis.arn
+          }
+        }
+      },
+      {
+        # Papéis do projeto só vão para os três serviços que os usam.
+        Sid      = "PassarPapeis"
+        Effect   = "Allow"
+        Action   = "iam:PassRole"
+        Resource = "arn:aws:iam::${local.conta}:role/${local.prefixo}-*"
+        Condition = {
+          StringEquals = {
+            "iam:PassedToService" = ["ec2.amazonaws.com", "lambda.amazonaws.com", "scheduler.amazonaws.com"]
           }
         }
       },
@@ -211,6 +291,17 @@ resource "aws_iam_role_policy" "deploy" {
         Effect   = "Allow"
         Action   = "ec2:*"
         Resource = "*"
+      },
+      {
+        # ...mas só instâncias pequenas: um token vazado não sobe GPU nem
+        # máquina grande.
+        Sid      = "EC2SoPequenas"
+        Effect   = "Deny"
+        Action   = ["ec2:RunInstances", "ec2:ModifyInstanceAttribute"]
+        Resource = "arn:aws:ec2:*:${local.conta}:instance/*"
+        Condition = {
+          StringNotEquals = { "ec2:InstanceType" = ["t3.micro", "t3.small", "t3.medium"] }
+        }
       },
       {
         Sid      = "Agendamento"

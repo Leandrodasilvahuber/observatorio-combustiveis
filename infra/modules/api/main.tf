@@ -24,7 +24,8 @@ data "archive_file" "api" {
 }
 
 resource "aws_iam_role" "api" {
-  name = local.name
+  name                 = local.name
+  permissions_boundary = var.permissions_boundary
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"

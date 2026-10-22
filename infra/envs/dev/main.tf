@@ -39,6 +39,14 @@ provider "aws" {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
+# Política-limite criada pelo infra/bootstrap: o papel de deploy só cria e
+# altera papéis que a carregam.
+locals {
+  limite_papeis = var.usar_limite_papeis ? "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${var.project}-${var.stage}-limite-papeis" : null
+}
+
 module "storage" {
   source = "../../modules/storage"
 
@@ -61,6 +69,7 @@ module "api" {
   url_auth_type               = var.api_url_auth_type
   cloudfront_distribution_arn = var.cloudfront_distribution_arn
   reserved_concurrency        = var.api_reserved_concurrency
+  permissions_boundary        = local.limite_papeis
 }
 
 module "runner" {
@@ -72,6 +81,8 @@ module "runner" {
   bucket_arn  = module.storage.bucket_arn
   pacote_path = "${path.root}/build/observatorio.tar.gz"
   ami_id      = var.ami_id
+
+  permissions_boundary = local.limite_papeis
 }
 
 # Alerta de custo (documento: US$ 10/mês). Só é criado com e-mail definido.

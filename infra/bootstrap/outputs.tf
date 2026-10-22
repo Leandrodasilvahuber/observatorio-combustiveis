@@ -6,3 +6,8 @@ output "deploy_role_arn" {
 output "tfstate_bucket" {
   value = aws_s3_bucket.tfstate.bucket
 }
+
+output "limite_papeis_arn" {
+  description = "Permissions boundary dos papéis observatorio-dev-*"
+  value       = aws_iam_policy.limite_papeis.arn
+}

@@ -62,7 +62,8 @@ resource "aws_security_group" "runner" {
 # ---------------------------------------------------------------------------
 
 resource "aws_iam_role" "runner" {
-  name = "${local.name}-runner"
+  name                 = "${local.name}-runner"
+  permissions_boundary = var.permissions_boundary
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -186,7 +187,8 @@ resource "aws_instance" "runner" {
 # ---------------------------------------------------------------------------
 
 resource "aws_iam_role" "scheduler" {
-  name = "${local.name}-scheduler"
+  name                 = "${local.name}-scheduler"
+  permissions_boundary = var.permissions_boundary
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"

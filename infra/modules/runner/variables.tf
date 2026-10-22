@@ -55,3 +55,9 @@ variable "buildx_version" {
   type    = string
   default = "v0.37.2"
 }
+
+variable "permissions_boundary" {
+  description = "ARN da política-limite dos papéis (null no LocalStack)"
+  type        = string
+  default     = null
+}

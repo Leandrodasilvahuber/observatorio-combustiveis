@@ -56,3 +56,9 @@ variable "email_alertas" {
   type        = string
   default     = ""
 }
+
+variable "usar_limite_papeis" {
+  description = "Aplica a política-limite do bootstrap aos papéis (false no LocalStack)"
+  type        = bool
+  default     = true
+}

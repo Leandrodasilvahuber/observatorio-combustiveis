@@ -6,3 +6,6 @@ ami_id = "ami-0532be01f26a3de55"
 api_base_path               = ""
 api_url_auth_type           = "NONE"
 cloudfront_distribution_arn = ""
+
+# O bootstrap (dono da política-limite) não roda no LocalStack.
+usar_limite_papeis = false
