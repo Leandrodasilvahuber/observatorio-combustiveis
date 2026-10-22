@@ -1,0 +1,8 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    tables:
+      - name: precos_anp
+        description: CSVs da ANP carregados sem tratamento (task carregar_raw).

@@ -1,0 +1,79 @@
+#!/bin/bash
+# Primeiro boot da EC2 (cloud-init roda este script uma única vez).
+# Instala Docker + Compose, gera o .env com senhas aleatórias e registra o
+# serviço que executa o ciclo a cada boot.
+# As variáveis do template (region, bucket, versões) vêm do templatefile do Terraform.
+# shellcheck disable=SC2154
+set -euxo pipefail
+
+# Se a preparação falhar, desliga em 15 min (dá tempo de cancelar pelo
+# Session Manager com `shutdown -c` e investigar) para não gerar custo.
+trap 'shutdown -h +15 "user_data falhou"' ERR
+
+dnf install -y docker
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL -o /usr/local/lib/docker/cli-plugins/docker-compose \
+  "https://github.com/docker/compose/releases/download/${compose_version}/docker-compose-linux-x86_64"
+curl -fsSL -o /usr/local/lib/docker/cli-plugins/docker-buildx \
+  "https://github.com/docker/buildx/releases/download/${buildx_version}/buildx-${buildx_version}.linux-amd64"
+chmod +x /usr/local/lib/docker/cli-plugins/*
+systemctl enable --now docker
+
+mkdir -p /opt/observatorio/bin /opt/observatorio/logs
+
+# Senhas geradas na própria máquina: não passam pelo Terraform nem pelo Git.
+if [ ! -f /opt/observatorio/.env ]; then
+  umask 077
+  cat > /opt/observatorio/.env <<EOF
+AWS_REGION=${region}
+AWS_DEFAULT_REGION=${region}
+OBS_BUCKET=${bucket}
+POSTGRES_PASSWORD=$(openssl rand -hex 24)
+AIRFLOW_DB_PASSWORD=$(openssl rand -hex 24)
+EOF
+  umask 022
+fi
+
+cat > /opt/observatorio/bin/inicializar.sh <<'EOF'
+#!/bin/bash
+# Baixa a versão atual do projeto do S3 e executa o ciclo.
+set -uo pipefail
+set -a
+source /opt/observatorio/.env
+set +a
+cd /opt/observatorio
+if aws s3 cp "s3://$OBS_BUCKET/${pacote_key}" pacote.tar.gz --only-show-errors; then
+  rm -rf app.novo && mkdir app.novo && tar -xzf pacote.tar.gz -C app.novo \
+    && rm -rf app && mv app.novo app
+else
+  echo "falha ao baixar o pacote; usando a versão anterior"
+fi
+if [ ! -x app/ec2/ciclo.sh ]; then
+  echo "projeto indisponível"
+  [ -f MANUTENCAO ] || shutdown -h now
+  exit 1
+fi
+exec app/ec2/ciclo.sh
+EOF
+chmod +x /opt/observatorio/bin/inicializar.sh
+
+cat > /etc/systemd/system/observatorio.service <<'EOF'
+[Unit]
+Description=Observatorio: roda a DAG e desliga a maquina
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/observatorio/bin/inicializar.sh
+TimeoutStartSec=4h
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable observatorio.service
+# No primeiro boot o serviço é iniciado aqui; nos seguintes, pelo systemd.
+systemctl start --no-block observatorio.service

@@ -1,0 +1,2 @@
+# boto3, requests, psycopg e os providers amazon/postgres já vêm na imagem.
+# O dbt fica em venv separado (veja Dockerfile).

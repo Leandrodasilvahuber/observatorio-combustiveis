@@ -1,0 +1,105 @@
+name: observatorio
+
+x-aws-local: &aws-local
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+
+services:
+  localstack:
+    # 4.14.0 é a última versão que roda sem token. As versões 2026.x (Hobby)
+    # exigem LOCALSTACK_AUTH_TOKEN.
+    image: localstack/localstack:${LOCALSTACK_VERSION:-4.14.0}
+    ports:
+      - "127.0.0.1:4566:4566"
+    environment:
+      SERVICES: s3,s3control,sts,iam,lambda,logs,ec2,scheduler,ssm
+      AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+      LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:-}
+    volumes:
+      # A Lambda roda em contêineres irmãos criados pelo LocalStack
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Home local da Lambda (mapa): http://localhost:8000
+  home:
+    image: nginx:1.27-alpine
+    ports:
+      - "127.0.0.1:${HOME_PORT:-8000}:80"
+    environment:
+      # Mesmo padrão do Makefile, que passa o valor ao Terraform
+      API_URL_ID: ${API_URL_ID_LOCAL:-observatorio}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+    volumes:
+      - ./infra/localstack/home.nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+    depends_on:
+      localstack:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17.11
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: observatorio
+      POSTGRES_USER: observatorio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD:?defina AIRFLOW_DB_PASSWORD no .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U observatorio -d observatorio"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  airflow:
+    build: ./airflow
+    image: observatorio-airflow:local
+    # standalone: api-server, scheduler, dag-processor e triggerer num só
+    # contêiner. Suficiente para dev; na EC2 o compose da AWS fará o mesmo.
+    command: standalone
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      <<: *aws-local
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "True"
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@postgres:5432/airflow
+      AIRFLOW_CONN_OBSERVATORIO_DW: postgresql://observatorio:${POSTGRES_PASSWORD}@postgres:5432/observatorio
+      OBS_BUCKET: ${OBS_BUCKET:-observatorio-dev-000000000000}
+      OBS_S3_ENDPOINT_URL: http://localstack:4566
+      OBS_MODO_AGENDA: interno
+      DBT_HOST: postgres
+      DBT_USER: observatorio
+      DBT_PASSWORD: ${POSTGRES_PASSWORD}
+      DBT_DB: observatorio
+      # Artefatos fora do bind mount (o contêiner não escreve em ./dbt)
+      DBT_TARGET_PATH: /tmp/dbt/target
+      DBT_LOG_PATH: /tmp/dbt/logs
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./dbt:/opt/airflow/dbt:ro
+      - airflow-logs:/opt/airflow/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+volumes:
+  postgres-data:
+  airflow-logs:

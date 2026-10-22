@@ -1,0 +1,24 @@
+.env
+.localstack/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+localstack_providers_override.tf
+infra/bootstrap/backend_override.tf
+infra/**/build/
+infra/envs/*/localstack.auto.tfvars
+
+# dbt (execuções fora do contêiner)
+dbt/target/
+dbt/logs/
+
+# Identificador anônimo gerado pelo dbt
+dbt/.user.yml

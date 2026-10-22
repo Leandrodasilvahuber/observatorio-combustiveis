@@ -1,0 +1,37 @@
+version: 2
+
+models:
+  - name: fct_precos
+    description: Um preço de venda por posto, produto e dia de coleta.
+    columns:
+      - name: cnpj
+        data_tests: [not_null]
+      - name: produto
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [GASOLINA, GASOLINA ADITIVADA, ETANOL, DIESEL, DIESEL S10, GNV]
+      - name: data_coleta
+        data_tests: [not_null]
+      - name: valor_venda
+        data_tests: [not_null]
+      - name: uf
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [AC, AL, AM, AP, BA, CE, DF, ES, GO, MA, MG, MS, MT, PA, PB, PE,
+                         PI, PR, RJ, RN, RO, RR, RS, SC, SE, SP, TO]
+
+  - name: agg_uf_periodo
+    description: Preço médio, mínimo, máximo e coletas por UF e produto no período.
+    columns:
+      - name: preco_medio
+        data_tests: [not_null]
+
+  - name: agg_etanol_compensa
+    description: Razão etanol/gasolina por município e indicador da regra dos 70%.
+    columns:
+      - name: razao
+        data_tests: [not_null]

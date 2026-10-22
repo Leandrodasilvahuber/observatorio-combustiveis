@@ -1,0 +1,5 @@
+boto3==1.43.117
+requests==2.34.2
+pytest==9.1.1
+ruff==0.14.0
+shellcheck-py==0.11.0.1

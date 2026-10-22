@@ -1,0 +1,18 @@
+version: 2
+
+# Testes na staging rodam antes do fct_precos (incremental): uma linha ruim
+# para o dbt build sem chegar ao fato. As linhas reprovadas ficam em
+# dbt_falhas.<teste>.
+models:
+  - name: stg_precos
+    columns:
+      - name: cnpj
+        data_tests: [not_null]
+      - name: produto
+        data_tests: [not_null]
+      - name: uf
+        data_tests: [not_null]
+      - name: data_coleta
+        data_tests: [not_null]
+      - name: valor_venda
+        data_tests: [not_null]

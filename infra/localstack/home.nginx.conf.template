@@ -1,0 +1,15 @@
+# Home local: http://localhost:8000 -> Function URL da Lambda no LocalStack.
+# O LocalStack escolhe a função pelo Host, então ele é reescrito aqui. A
+# imagem do nginx troca as variáveis (envsubst) ao subir o contêiner.
+server {
+    listen 80;
+
+    location / {
+        proxy_pass http://localstack:4566;
+        proxy_set_header Host ${API_URL_ID}.lambda-url.${AWS_REGION}.localhost.localstack.cloud:4566;
+        # A checagem de CORS do LocalStack recusa (403) Referer/Origin de outra
+        # origem, o que bloqueava o CSS e o JS da página.
+        proxy_set_header Referer "";
+        proxy_set_header Origin "";
+    }
+}

@@ -1,0 +1,65 @@
+# Compose usado na EC2. Sem LocalStack: o S3 é o real e as credenciais vêm da
+# role da instância (IMDSv2 com hop limit 2 para alcançar os contêineres).
+# As variáveis vêm de /opt/observatorio/.env, gerado no primeiro boot.
+name: observatorio
+
+services:
+  postgres:
+    image: postgres:17.11
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: observatorio
+      POSTGRES_USER: observatorio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD:?defina AIRFLOW_DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U observatorio -d observatorio"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  airflow:
+    build: ./airflow
+    image: observatorio-airflow:aws
+    command: standalone
+    # Só em localhost: o acesso é pelo túnel do Session Manager.
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      AWS_DEFAULT_REGION: ${AWS_REGION:?defina AWS_REGION}
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "False"
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@postgres:5432/airflow
+      AIRFLOW_CONN_OBSERVATORIO_DW: postgresql://observatorio:${POSTGRES_PASSWORD}@postgres:5432/observatorio
+      OBS_BUCKET: ${OBS_BUCKET:?defina OBS_BUCKET}
+      OBS_S3_ENDPOINT_URL: ""
+      # Quem agenda é o EventBridge Scheduler; a DAG não tem agenda própria.
+      OBS_MODO_AGENDA: externo
+      DBT_HOST: postgres
+      DBT_USER: observatorio
+      DBT_PASSWORD: ${POSTGRES_PASSWORD}
+      DBT_DB: observatorio
+      DBT_TARGET_PATH: /tmp/dbt/target
+      DBT_LOG_PATH: /tmp/dbt/logs
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./dbt:/opt/airflow/dbt:ro
+      - airflow-logs:/opt/airflow/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+volumes:
+  postgres-data:
+  airflow-logs:

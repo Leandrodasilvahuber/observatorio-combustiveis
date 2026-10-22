@@ -1,0 +1,158 @@
+# CI/CD do Observatório.
+#   push e pull request: análise estática + testes unitários
+#   push na main: depois dos dois, terraform apply na AWS (papel via OIDC,
+#   sem chave guardada no GitHub) e teste de fumaça no site
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TERRAFORM_VERSION: 1.13.4
+  AWS_REGION: us-east-1
+
+jobs:
+  estatico:
+    name: Análise estática
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - run: pip install -r requirements-dev.txt
+
+      - name: ruff (lint + segurança)
+        run: ruff check --output-format github .
+
+      - name: ruff (formatação)
+        run: ruff format --check .
+
+      - name: shellcheck
+        run: shellcheck ec2/*.sh postgres/init/*.sh infra/modules/runner/user_data.sh.tftpl
+
+      - name: actionlint (workflows)
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+          ./actionlint -color
+
+      # Valida modelos, ref() e YAMLs do dbt sem conectar no banco
+      - name: dbt parse
+        env:
+          DBT_PASSWORD: ci
+        run: |
+          python -m venv /tmp/dbt
+          /tmp/dbt/bin/pip install -q dbt-core==1.12.6 dbt-postgres==1.11.0
+          /tmp/dbt/bin/dbt parse --project-dir dbt --profiles-dir dbt --target-path /tmp/dbt-target
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        run: terraform fmt -recursive -check infra
+
+      - name: terraform validate
+        run: |
+          for d in infra/bootstrap infra/envs/dev; do
+            terraform -chdir="$d" init -backend=false -input=false >/dev/null
+            terraform -chdir="$d" validate
+          done
+
+      - uses: terraform-linters/setup-tflint@6ffdbaa3be476b3431f7275c26966ef32ff60337 # v6.3.2
+        with:
+          tflint_version: v0.59.1
+
+      - name: tflint
+        env:
+          GITHUB_TOKEN: ${{ github.token }}  # download do plugin da AWS sem limite de taxa
+        run: |
+          tflint --init
+          for d in infra/bootstrap infra/envs/dev; do
+            tflint --chdir="$d" --config="$GITHUB_WORKSPACE/.tflint.hcl" -f compact
+          done
+
+  testes:
+    name: Testes unitários
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - run: pip install -r requirements-dev.txt
+
+      - run: pytest -q
+
+  deploy:
+    name: Deploy na AWS
+    needs: [estatico, testes]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: producao
+    permissions:
+      contents: read
+      id-token: write  # OIDC para assumir o papel na AWS
+    # Nunca dois applies no mesmo state; o seguinte espera na fila
+    concurrency:
+      group: deploy-aws
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: infra/envs/dev
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Pacote da EC2
+        working-directory: .
+        run: make pacote
+
+      - run: terraform init -input=false
+
+      - run: terraform plan -input=false -out=plano.tfplan
+
+      - run: terraform apply -input=false plano.tfplan
+
+      # A rota /gasolina é da CloudFront do site (outro repositório); enquanto
+      # ela não existir, o site responde com a página inicial, e o teste falha.
+      - name: Teste de fumaça
+        if: vars.SITE_URL != ''
+        working-directory: .
+        run: |
+          for tentativa in 1 2 3 4 5 6; do
+            codigo=$(curl -s -o resposta.html -w '%{http_code}' "${{ vars.SITE_URL }}/gasolina")
+            if [[ "$codigo" =~ ^(200|404)$ ]] && grep -q 'Preço dos combustíveis por estado' resposta.html; then
+              echo "OK: HTTP $codigo"; exit 0
+            fi
+            echo "tentativa $tentativa: HTTP $codigo"; sleep 20
+          done
+          exit 1
