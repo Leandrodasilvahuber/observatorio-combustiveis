@@ -67,7 +67,10 @@ Requires=docker.service
 [Service]
 Type=oneshot
 ExecStart=/opt/observatorio/bin/inicializar.sh
+# Mudou aqui, mude LIMITE_SERVICO_MIN no ec2/ciclo.sh (desligamento de segurança)
 TimeoutStartSec=4h
+# Tempo para o ciclo enviar os logs e desligar depois de um TERM
+TimeoutStopSec=5min
 
 [Install]
 WantedBy=multi-user.target

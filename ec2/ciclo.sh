@@ -14,6 +14,13 @@ APP_DIR="${APP_DIR:-$ESTADO_DIR/app}"
 export COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.aws.yml}"
 DESLIGAR="${DESLIGAR:-shutdown -h now}"
 TIMEOUT_DAG_S="${TIMEOUT_DAG_S:-10800}"
+# Desligamento de segurança agendado no início: vale mesmo se o finalizar não
+# chegar ao fim. Fica depois do TimeoutStartSec (4 h) e do TimeoutStopSec
+# (5 min) do serviço, para nunca cortar a DAG nem o finalizar que o systemd
+# ainda deixaria rodar; o aviso de nologin (5 min antes) também cai depois.
+LIMITE_SERVICO_MIN="${LIMITE_SERVICO_MIN:-240}"
+DESLIGAR_SEGURANCA="${DESLIGAR_SEGURANCA:-shutdown -h +$((LIMITE_SERVICO_MIN + 10))}"
+CANCELAR_SEGURANCA="${CANCELAR_SEGURANCA:-shutdown -c}"
 DAG_ID=observatorio_combustiveis
 INICIO="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
 RUN_ID=""
@@ -22,12 +29,20 @@ mkdir -p "$ESTADO_DIR/logs"
 LOG="$ESTADO_DIR/logs/ciclo-$INICIO.log"
 exec >>"$LOG" 2>&1
 
+log() { echo "[$(date -u +%H:%M:%S)] $*"; }
+
+# Antes do trap EXIT: sem o .env não dá para consultar o S3 nem usar o
+# compose, mas a máquina ainda precisa desligar (a menos que o arquivo de
+# manutenção local diga o contrário).
 set -a
 # shellcheck source=/dev/null
-source "$ESTADO_DIR/.env"
+if ! source "$ESTADO_DIR/.env"; then
+    set +a
+    log "não foi possível carregar $ESTADO_DIR/.env"
+    [[ -f "$ESTADO_DIR/MANUTENCAO" ]] || $DESLIGAR
+    exit 1
+fi
 set +a
-
-log() { echo "[$(date -u +%H:%M:%S)] $*"; }
 compose() { docker compose --env-file "$ESTADO_DIR/.env" "$@"; }
 
 em_manutencao() {
@@ -56,6 +71,7 @@ finalizar() {
     enviar_logs
     if em_manutencao; then
         log "modo manutenção ativo: a máquina continua ligada"
+        $CANCELAR_SEGURANCA || true
         return
     fi
     compose stop || true
@@ -70,6 +86,7 @@ fi
 trap finalizar EXIT
 # Garante o EXIT trap mesmo se o systemd encerrar o serviço por timeout.
 trap 'exit 143' TERM
+$DESLIGAR_SEGURANCA
 
 cd "$APP_DIR"
 log "subindo contêineres"
@@ -80,12 +97,18 @@ if ! compose up -d --build --wait; then
 fi
 
 log "aguardando a DAG ser registrada"
+registrada=""
 for _ in $(seq 60); do
     if compose exec -T airflow airflow dags list -o plain 2>/dev/null | grep -qw "$DAG_ID"; then
+        registrada=1
         break
     fi
     sleep 5
 done
+if [[ -z "$registrada" ]]; then
+    log "a DAG $DAG_ID não apareceu em 5 min (erro de import? veja airflow dags list-import-errors)"
+    exit 1
+fi
 
 # Execuções interrompidas por um desligamento anterior seguram a fila
 # (max_active_runs=1); são encerradas antes do novo disparo.
