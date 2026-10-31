@@ -16,7 +16,7 @@ from observatorio import bronze, config, publicar, raw
 # Local o próprio Airflow agenda; na AWS quem marca o tempo é o EventBridge,
 # que liga a EC2, e o script de boot dispara a DAG.
 MODO_AGENDA = os.environ.get("OBS_MODO_AGENDA", "interno")
-SCHEDULE = timedelta(days=10) if MODO_AGENDA == "interno" else None
+SCHEDULE = timedelta(days=30) if MODO_AGENDA == "interno" else None
 
 DBT_DIR = "/opt/airflow/dbt"
 

@@ -34,7 +34,7 @@
     <ol class="etapas">
       <li class="etapa"><small class="ferramenta">Fonte</small><b>ANP</b><span>Dados abertos: CSV das últimas 4 semanas</span></li>
       <li class="grupo">
-        <span class="rotulo">EC2 · o EventBridge liga a cada 10 dias, roda uma vez e desliga</span>
+        <span class="rotulo">EC2 · o EventBridge liga a cada 30 dias, roda uma vez e desliga</span>
         <ol>
           <li class="etapa"><small class="ferramenta airflow">Airflow</small><b>baixar_<wbr>para_<wbr>bronze</b><span>CSV como veio no S3 (bronze)</span></li>
           <li class="etapa"><small class="ferramenta airflow">Airflow</small><b>validar</b><span>Confere o cabeçalho de cada CSV</span></li>

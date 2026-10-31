@@ -4,7 +4,7 @@
 
 Pipeline de dados que coleta os preços de combustíveis da ANP (Levantamento de
 Preços de Combustíveis), organiza em camadas (bronze, raw, staging, marts) e
-publica a cada 10 dias um mapa do Brasil com o ranking de preço por estado.
+publica a cada 30 dias um mapa do Brasil com o ranking de preço por estado.
 
 **No ar:** <https://www.leandrohuber.freeddns.org/gasolina>
 
@@ -12,13 +12,13 @@ publica a cada 10 dias um mapa do Brasil com o ranking de preço por estado.
 
 A ideia central é **pagar só pelo que roda**: a página fica sempre no ar
 (Lambda + CloudFront, centavos por mês), enquanto o pipeline pesado (Postgres,
-Airflow e dbt numa EC2) liga a cada 10 dias, roda uma vez e se desliga. Tudo é
+Airflow e dbt numa EC2) liga a cada 30 dias, roda uma vez e se desliga. Tudo é
 desenvolvido localmente com LocalStack, e o mesmo Terraform sobe para a AWS.
 
 ## Sumário
 
 - [Arquitetura](#arquitetura)
-- [Ciclo de 10 dias na AWS](#ciclo-de-10-dias-na-aws)
+- [Ciclo de 30 dias na AWS](#ciclo-de-30-dias-na-aws)
 - [Pipeline de dados](#pipeline-de-dados)
 - [O site (/gasolina)](#o-site-gasolina)
 - [CI/CD](#cicd)
@@ -42,7 +42,7 @@ flowchart LR
 
     subgraph AWS["AWS (us-east-1)"]
         direction LR
-        SCH["EventBridge Scheduler<br/>rate(10 days)"]
+        SCH["EventBridge Scheduler<br/>rate(30 days)"]
 
         subgraph EC2["EC2 t3.medium (liga, roda, desliga)"]
             direction TB
@@ -87,12 +87,12 @@ Quatro decisões explicam o desenho:
 
 | Decisão | Por quê |
 |---|---|
-| **EC2 que liga e desliga** em vez de RDS/MWAA | Postgres e Airflow gerenciados custariam dezenas de dólares por mês para rodar 30 min a cada 10 dias. A EC2 parada custa só o disco. |
+| **EC2 que liga e desliga** em vez de RDS/MWAA | Postgres e Airflow gerenciados custariam dezenas de dólares por mês para rodar 30 min a cada 30 dias. A EC2 parada custa só o disco. |
 | **A Lambda nunca consulta o banco** | O banco fica desligado quase o tempo todo. O pipeline publica JSON prontos no S3 e a Lambda só lê. |
 | **dbt dentro do Postgres** | As transformações e os testes de qualidade ficam versionados em SQL. Quem grava no S3 é a task `publicar_resultados`. |
 | **Página sem dependências externas** | Mapa (SVG), CSS, JS e bandeiras saem da própria Lambda: nada de CDN, e funciona com a CSP rígida do site. |
 
-## Ciclo de 10 dias na AWS
+## Ciclo de 30 dias na AWS
 
 ```mermaid
 sequenceDiagram
@@ -103,7 +103,7 @@ sequenceDiagram
     participant AF as Airflow + Postgres
     participant ANP as ANP
 
-    SCH->>EC2: StartInstances (a cada 10 dias)
+    SCH->>EC2: StartInstances (a cada 30 dias)
     EC2->>S3: modo manutenção? (config/MANUTENCAO)
     EC2->>S3: baixa deploy/observatorio.tar.gz
     EC2->>AF: docker compose up (Postgres + Airflow)
@@ -120,6 +120,9 @@ sequenceDiagram
 - **Primeiro boot:** o user_data instala Docker, Compose e buildx, gera
   `/opt/observatorio/.env` com senhas aleatórias (não passam pelo Terraform
   nem pelo Git) e já roda um ciclo.
+- **Cobertura:** a ANP publica as últimas 4 semanas (28 dias), então cerca
+  de 2 dias entre um ciclo e outro ficam fora do histórico do `fct_precos`. O
+  mapa usa só os 10 dias mais recentes de cada produto e não é afetado.
 - **Atualizar o código:** cada deploy envia um novo pacote ao S3, e a EC2 usa a
   versão nova no próximo boot.
 - **Proteções de custo:** qualquer falha no ciclo envia os logs e desliga; se o
@@ -357,7 +360,7 @@ make reset         # para tudo e apaga os volumes
 
 Para imitar a AWS (rodar uma vez e derrubar): `make dag-test` e depois
 `docker compose stop airflow postgres`; o LocalStack e a home continuam no ar.
-`make dag-run` despausa a DAG, que passa a rodar sozinha a cada 10 dias.
+`make dag-run` despausa a DAG, que passa a rodar sozinha a cada 30 dias.
 
 Revise as senhas no `.env` (criado a partir do `.env.example`) antes da
 primeira subida; elas só são aplicadas quando o volume do Postgres é criado.

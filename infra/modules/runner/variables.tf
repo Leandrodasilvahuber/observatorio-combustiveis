@@ -43,7 +43,7 @@ variable "subnet_id" {
 
 variable "schedule_expression" {
   type    = string
-  default = "rate(10 days)"
+  default = "rate(30 days)"
 }
 
 variable "compose_version" {

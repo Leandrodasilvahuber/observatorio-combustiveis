@@ -183,7 +183,7 @@ resource "aws_instance" "runner" {
 }
 
 # ---------------------------------------------------------------------------
-# EventBridge Scheduler: liga a instância a cada 10 dias
+# EventBridge Scheduler: liga a instância a cada 30 dias
 # ---------------------------------------------------------------------------
 
 resource "aws_iam_role" "scheduler" {
