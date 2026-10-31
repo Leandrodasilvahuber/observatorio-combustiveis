@@ -17,7 +17,7 @@ with origem as (
              then to_date(trim(data_coleta), 'DD/MM/YYYY') end   as data_coleta,
         case when trim(valor_venda) ~ '^\d+(,\d+)?$'
              then replace(trim(valor_venda), ',', '.')::numeric(10, 3) end as valor_venda,
-        nullif(trim(unidade_medida), '')                         as unidade_medida,
+        {{ normalizar_unidade('unidade_medida') }}               as unidade_medida,
         coalesce(upper(nullif(trim(bandeira), '')), 'SEM BANDEIRA') as bandeira,
         arquivo_origem,
         carregado_em

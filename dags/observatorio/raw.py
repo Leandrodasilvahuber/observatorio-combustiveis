@@ -15,6 +15,12 @@ log = logging.getLogger(__name__)
 DDL = (Path(__file__).parent / "sql" / "raw_precos_anp.sql").read_text()
 COLUNAS_COPY = COLUNAS_RAW + ["arquivo_origem"]
 
+# Cada ciclo carrega de novo as últimas 4 semanas, e a raw não pode crescer
+# para sempre (a staging a varre inteira a cada dbt build). Acima do que o
+# fct_precos incremental reprocessa (35 dias); o histórico fica no fato, mas
+# um --full-refresh só recupera o que ainda estiver na raw.
+RETENCAO_DIAS = 45
+
 
 def linhas_padronizadas(linhas: Iterable[str], arquivo_origem: str) -> Iterator[list]:
     """Reordena as colunas do CSV da ANP para o layout da raw, sem tratar valores.
@@ -70,10 +76,25 @@ def carregar_arquivo(conn, chave: str, s3=None) -> int:
     return total
 
 
+def podar_raw(conn) -> int:
+    """Apaga as cargas mais antigas que RETENCAO_DIAS."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "delete from raw.precos_anp where carregado_em < now() - make_interval(days => %s)",
+            (RETENCAO_DIAS,),
+        )
+        apagadas = cur.rowcount
+    conn.commit()
+    log.info("raw: %d linha(s) com mais de %d dias apagadas", apagadas, RETENCAO_DIAS)
+    return apagadas
+
+
 def carregar_raw(conn, chaves: list[str], s3=None) -> dict[str, int]:
     s3 = s3 or config.s3_client()
     try:
-        return {chave: carregar_arquivo(conn, chave, s3) for chave in chaves}
+        totais = {chave: carregar_arquivo(conn, chave, s3) for chave in chaves}
+        podar_raw(conn)
+        return totais
     except Exception:
         conn.rollback()
         raise

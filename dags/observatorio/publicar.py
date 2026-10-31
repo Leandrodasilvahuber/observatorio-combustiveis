@@ -35,12 +35,17 @@ def montar_resumo(linhas_uf: list[dict], linhas_etanol: list[dict], gerado_em: d
     if not linhas_uf:
         raise ValueError("agg_uf_periodo vazio: nada a publicar")
 
-    primeira = linhas_uf[0]
-    inicio, fim = primeira["periodo_inicio"], primeira["periodo_fim"]
+    # A janela é por produto; o período do resumo (e o nome do arquivo em
+    # resultados/) é o do produto com a coleta mais recente.
+    por_produto = {l["produto"]: (l["periodo_inicio"], l["periodo_fim"]) for l in linhas_uf}
+    inicio, fim = max(por_produto.values(), key=lambda p: p[1])
     return {
         # dias explícito: a janela dos marts já mudou (16 -> 10) e o histórico
         # em resultados/ mistura os dois tamanhos.
         "periodo": {"inicio": inicio.isoformat(), "fim": fim.isoformat(), "dias": (fim - inicio).days + 1},
+        "periodo_por_produto": {
+            produto: {"inicio": i.isoformat(), "fim": f.isoformat()} for produto, (i, f) in sorted(por_produto.items())
+        },
         "gerado_em": gerado_em.isoformat(timespec="seconds"),
         "preco_medio_por_uf": [
             {

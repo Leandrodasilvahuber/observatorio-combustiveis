@@ -42,12 +42,26 @@ def test_resumo_segue_o_formato_documentado():
     resumo = montar_resumo(UF, ETANOL, datetime(2026, 10, 21, 9, 12, 44, tzinfo=timezone.utc))
 
     assert resumo["periodo"] == {"inicio": "2026-10-02", "fim": "2026-10-17", "dias": 16}
+    assert resumo["periodo_por_produto"] == {"GASOLINA": {"inicio": "2026-10-02", "fim": "2026-10-17"}}
     assert resumo["gerado_em"] == "2026-10-21T09:12:44+00:00"
     assert resumo["preco_medio_por_uf"][0]["preco_medio"] == 6.412
     etanol = resumo["etanol_vs_gasolina"]
     assert etanol["municipios_analisados"] == 2
     assert etanol["municipios_onde_etanol_compensa"] == 1
     assert etanol["melhores_para_etanol"][0]["municipio"] == "LINS"
+
+
+def test_periodo_do_resumo_e_o_do_produto_mais_recente():
+    diesel = {
+        **UF[0],
+        "produto": "DIESEL",
+        "periodo_inicio": date(2026, 9, 28),
+        "periodo_fim": date(2026, 10, 7),
+    }
+    resumo = montar_resumo([diesel, *UF], ETANOL, datetime.now(timezone.utc))
+
+    assert resumo["periodo"]["fim"] == "2026-10-17"
+    assert resumo["periodo_por_produto"]["DIESEL"] == {"inicio": "2026-09-28", "fim": "2026-10-07"}
 
 
 def test_sem_agregados_nao_publica():

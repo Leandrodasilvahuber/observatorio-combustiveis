@@ -25,3 +25,7 @@ create table if not exists raw.precos_anp (
 
 create index if not exists precos_anp_arquivo_origem_idx
     on raw.precos_anp (arquivo_origem);
+
+-- Poda por idade da carga (raw.podar_raw) a cada ciclo.
+create index if not exists precos_anp_carregado_em_idx
+    on raw.precos_anp (carregado_em);

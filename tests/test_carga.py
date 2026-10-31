@@ -103,7 +103,8 @@ class CursorFalso:
         return False
 
     def execute(self, sql, params=None):
-        if sql.startswith("delete"):
+        self.banco.comandos.append(sql)
+        if sql.startswith("delete from raw.precos_anp where arquivo_origem"):
             antes = len(self.banco.linhas)
             self.banco.linhas = [l for l in self.banco.linhas if l[-1] != params[0]]
             self.rowcount = antes - len(self.banco.linhas)
@@ -126,7 +127,7 @@ class CursorFalso:
 
 class ConexaoFalsa:
     def __init__(self):
-        self.linhas, self.commits = [], 0
+        self.linhas, self.commits, self.comandos = [], 0, []
 
     def cursor(self):
         return CursorFalso(self)
@@ -146,6 +147,15 @@ def test_carga_raw_e_idempotente_e_respeita_aspas():
     registro = dict(zip(COLUNAS_RAW, conn.linhas[1], strict=False))
     assert registro["complemento"] == "LOTE: 04;"
     assert registro["bandeira"] == ""  # vazio na raw; vira SEM BANDEIRA na staging
+
+
+def test_carga_raw_poda_cargas_antigas_depois_de_carregar():
+    conn = ConexaoFalsa()
+    raw.carregar_raw(conn, ["bronze/a.csv"], S3Falso({"bronze/a.csv": CSV_ANP}))
+
+    poda = [c for c in conn.comandos if "carregado_em <" in c]
+    assert len(poda) == 1
+    assert conn.comandos.index(poda[0]) > conn.comandos.index("delete from raw.precos_anp where arquivo_origem = %s")
 
 
 def test_linhas_com_colunas_a_mais_geram_aviso(caplog):
