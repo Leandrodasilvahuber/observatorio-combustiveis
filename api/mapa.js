@@ -1,10 +1,20 @@
-// Mapa da home: lê os dados embutidos em #dados e desenha mapa, legenda e ranking.
+// Mapa da home: lê os dados embutidos em #dados (e contornos e instalações do
+// base.js, em window.OBS_BASE) e desenha mapa, legenda e ranking.
 (function(){
   var D = JSON.parse(document.getElementById("dados").textContent);
+  // Sem o base.js (HTML antigo em cache, de antes dele), ficam os dados
+  // embutidos no #dados.
+  var BASE = window.OBS_BASE || {};
+  D.mapa = BASE.mapa || D.mapa;
+  D.instalacoes = BASE.instalacoes || D.instalacoes;
   var ORDEM = ["GASOLINA","GASOLINA ADITIVADA","ETANOL","DIESEL","DIESEL S10","GNV"];
   var ROTULO = {"GASOLINA":"Gasolina comum","GASOLINA ADITIVADA":"Gasolina aditivada","ETANOL":"Etanol",
                 "DIESEL":"Diesel","DIESEL S10":"Diesel S10","GNV":"GNV"};
-  var FAIXAS = 5;
+  // Escala contínua de um tom só, do mais barato (--esc-0) ao mais caro
+  // (--esc-3) do produto escolhido; os tons do meio só dão os passos (estilo.css).
+  var ESCALA = ["var(--esc-0)", "var(--esc-1)", "var(--esc-2)", "var(--esc-3)"];
+  // Estados pequenos demais para a sigla caber dentro.
+  var SEM_SIGLA = ["DF", "SE", "AL", "RN", "PB", "ES", "RJ"];
   var FOSSEIS = ["GASOLINA","GASOLINA ADITIVADA","DIESEL","DIESEL S10"];
   // Camadas de pontos por cima do mapa; cada uma aparece só nos produtos dela.
   var CAMADAS = [
@@ -48,8 +58,14 @@
   var produtos = ORDEM.filter(function(p){ return D.precos.some(function(l){ return l.produto === p; }); });
   D.precos.forEach(function(l){ if (produtos.indexOf(l.produto) < 0) produtos.push(l.produto); });
 
-  document.getElementById("sub").textContent =
-    "Período de " + data(D.periodo.inicio) + " a " + data(D.periodo.fim) + " · fonte: ANP (Levantamento de Preços de Combustíveis)";
+  // Cada produto tem a própria janela de 10 dias (os arquivos da ANP podem
+  // chegar com datas diferentes); o subtítulo mostra a do produto escolhido.
+  function legendaPeriodo(produto){
+    var p = (D.periodo_por_produto || {})[produto] || D.periodo;
+    document.getElementById("sub").textContent =
+      "Período de " + data(p.inicio) + " a " + data(p.fim) + " · fonte: ANP (Levantamento de Preços de Combustíveis)";
+  }
+  legendaPeriodo(null);
   if (D.etanol.municipios_analisados) {
     document.getElementById("etanol").innerHTML = "O etanol compensa (até 70% do preço da gasolina) em <b>" +
       inteiro.format(D.etanol.municipios_onde_etanol_compensa) + "</b> de " +
@@ -59,21 +75,37 @@
   var svg = document.getElementById("mapa"), NS = "http://www.w3.org/2000/svg";
   svg.setAttribute("viewBox", "0 0 " + D.mapa.largura + " " + D.mapa.altura);
   var caminhos = {};
+  var estados = document.createElementNS(NS, "g");
+  estados.setAttribute("class", "estados");
+  svg.appendChild(estados);
   Object.keys(D.mapa.ufs).forEach(function(uf){
     var p = document.createElementNS(NS, "path");
     p.setAttribute("d", D.mapa.ufs[uf]);
     p.setAttribute("tabindex", "0");
     p.setAttribute("class", "uf");
     p.dataset.uf = uf;
-    svg.appendChild(p);
+    estados.appendChild(p);
     caminhos[uf] = p;
+  });
+  // Siglas no centro da caixa de cada estado grande (entram no SVG depois das
+  // rotas, para não ficarem escondidas por elas).
+  var siglas = document.createElementNS(NS, "g");
+  siglas.setAttribute("aria-hidden", "true");
+  Object.keys(caminhos).forEach(function(uf){
+    if (SEM_SIGLA.indexOf(uf) >= 0) return;
+    var caixa = caminhos[uf].getBBox(), t = document.createElementNS(NS, "text");
+    t.setAttribute("class", "sigla");
+    t.setAttribute("x", (caixa.x + caixa.width / 2).toFixed(1));
+    t.setAttribute("y", (caixa.y + caixa.height / 2).toFixed(1));
+    t.textContent = uf;
+    siglas.appendChild(t);
   });
   // Destaque numa camada própria, por cima de todos os estados. Mover o estado
   // para o fim do SVG tiraria o foco do teclado dele.
-  var contorno = document.createElementNS(NS, "path");
+  var contornoHalo = document.createElementNS(NS, "path"), contorno = document.createElementNS(NS, "path");
+  contornoHalo.id = "contorno-halo";
   contorno.id = "contorno";
-  contorno.setAttribute("aria-hidden", "true");
-  svg.appendChild(contorno);
+  [contornoHalo, contorno].forEach(function(c){ c.setAttribute("aria-hidden", "true"); svg.appendChild(c); });
   var destacado = null;
 
   // Bonecos das camadas, desenhados em coordenadas próprias (viewBox -11 -16 22 28).
@@ -123,6 +155,7 @@
   svg.insertBefore(defs, svg.firstChild);
   var rotas = document.createElementNS(NS, "g");
   svg.appendChild(rotas);
+  svg.appendChild(siglas);
   var pontos = document.createElementNS(NS, "g");
   pontos.setAttribute("class", "pontos");
   svg.appendChild(pontos);
@@ -137,6 +170,9 @@
     return 6371 * 2 * Math.asin(Math.sqrt(h));
   }
   var produtoAtual = null, itens = [];
+  // O que a dica mostra agora ("uf:SP", "item:3"): com o mesmo alvo, o
+  // pointermove só reposiciona, sem refazer o conteúdo nem as distâncias.
+  var dicaAtual = null;
 
   function pontoNoMeio(xy){
     var total = 0, i;
@@ -244,6 +280,7 @@
   }
   camadasEl.addEventListener("change", function(e){
     ligada[e.target.dataset.camada] = e.target.checked;
+    esconder();
     desenharPontos();
   });
 
@@ -263,24 +300,31 @@
   var porUf = {};
   var dica = document.getElementById("dica"), tbody = document.getElementById("ranking");
 
-  function faixa(pos, total){ return Math.min(FAIXAS, Math.floor((pos - 1) * FAIXAS / total) + 1); }
+  // Preços extremos do produto escolhido: as pontas da escala.
+  var minimo = 0, maximo = 0;
+  function posicaoNaEscala(preco){ return maximo > minimo ? (preco - minimo) / (maximo - minimo) : 0.5; }
+  // Mistura os dois tons vizinhos da escala (em OKLab, como o degradê da legenda).
+  function cor(preco){
+    var t = posicaoNaEscala(preco) * (ESCALA.length - 1), i = Math.min(Math.floor(t), ESCALA.length - 2);
+    return "color-mix(in oklab, " + ESCALA[i + 1] + " " + Math.round((t - i) * 100) + "%, " + ESCALA[i] + ")";
+  }
 
   function desenhar(produto){
     produtoAtual = produto;
+    legendaPeriodo(produto);
     desenharCamadas();
     desenharPontos();
     var linhas = D.precos.filter(function(l){ return l.produto === produto; })
       .sort(function(a, b){ return a.preco_medio - b.preco_medio || a.uf.localeCompare(b.uf); });
     porUf = {};
+    minimo = linhas.length ? linhas[0].preco_medio : 0;
+    maximo = linhas.length ? linhas[linhas.length - 1].preco_medio : 0;
     linhas.forEach(function(l, i){
-      var anterior = i > 0 ? porUf[linhas[i - 1].uf] : null;
-      // Preço médio empatado fica na mesma faixa (mesma cor) do anterior.
-      var f = anterior && anterior.linha.preco_medio === l.preco_medio ? anterior.faixa : faixa(i + 1, linhas.length);
-      porUf[l.uf] = {linha: l, pos: i + 1, total: linhas.length, faixa: f};
+      porUf[l.uf] = {linha: l, pos: i + 1, total: linhas.length, cor: cor(l.preco_medio)};
     });
     Object.keys(caminhos).forEach(function(uf){
       var info = porUf[uf], p = caminhos[uf];
-      p.style.fill = info ? "var(--f" + info.faixa + ")" : "var(--sem-dado)";
+      p.style.fill = info ? info.cor : "var(--sem-dado)";
       p.setAttribute("aria-label", D.nomes[uf] + (info ? ": " + reais.format(info.linha.preco_medio) +
         ", " + info.pos + "º mais barato de " + info.total : ": sem coletas"));
     });
@@ -291,36 +335,61 @@
       tr.dataset.uf = l.uf;
       tr.innerHTML = "<td>" + (i + 1) + "º</td><td><span class=\"cor\"></span></td><td>" +
         numero.format(l.preco_medio) + "</td><td>" + numero.format(l.preco_min) + "</td><td>" + numero.format(l.preco_max) + "</td>";
-      tr.querySelector(".cor").style.background = "var(--f" + porUf[l.uf].faixa + ")";
+      tr.querySelector(".cor").style.background = porUf[l.uf].cor;
       tr.children[1].appendChild(bandeira(l.uf));
       tr.children[1].appendChild(document.createTextNode(D.nomes[l.uf] || l.uf));
       tbody.appendChild(tr);
     });
 
+    desenharLegenda(linhas);
+    esconder();
+  }
+
+  // Degradê da escala com um tique por estado e os preços das duas pontas.
+  function desenharLegenda(linhas){
     var leg = document.getElementById("legenda");
     leg.innerHTML = "";
-    for (var f = 1; f <= FAIXAS; f++) {
-      var membros = linhas.filter(function(l){ return porUf[l.uf].faixa === f; });
-      if (!membros.length) continue;
-      var div = document.createElement("div"), cor = document.createElement("span");
-      cor.style.background = "var(--f" + f + ")";
-      div.appendChild(cor);
-      var de = membros[0].preco_medio, ate = membros[membros.length - 1].preco_medio;
-      div.appendChild(document.createTextNode(de === ate ? numero.format(de) : numero.format(de) + " – " + numero.format(ate)));
-      leg.appendChild(div);
-    }
-    esconder();
+    if (!linhas.length) return;
+    var titulo = document.createElement("div");
+    titulo.className = "titulo-escala";
+    titulo.textContent = "Preço médio (" + (linhas[0].unidade || "R$") + ")";
+    var escala = document.createElement("div");
+    escala.className = "escala";
+    linhas.forEach(function(l){
+      var m = document.createElement("span");
+      m.className = "marca";
+      m.dataset.uf = l.uf;
+      m.style.left = (posicaoNaEscala(l.preco_medio) * 100).toFixed(2) + "%";
+      escala.appendChild(m);
+    });
+    var extremos = document.createElement("div");
+    extremos.className = "extremos";
+    [[minimo, "mais barato"], [maximo, "mais caro"]].forEach(function(par){
+      var span = document.createElement("span"), b = document.createElement("b");
+      b.textContent = numero.format(par[0]);
+      span.appendChild(b);
+      span.appendChild(document.createTextNode(" " + par[1]));
+      extremos.appendChild(span);
+    });
+    leg.appendChild(titulo); leg.appendChild(escala); leg.appendChild(extremos);
   }
 
   function destacar(uf){
     if (uf === destacado) return;
     destacado = uf;
-    if (uf && caminhos[uf]) contorno.setAttribute("d", caminhos[uf].getAttribute("d"));
-    else contorno.removeAttribute("d");
+    [contornoHalo, contorno].forEach(function(c){
+      if (uf && caminhos[uf]) c.setAttribute("d", caminhos[uf].getAttribute("d"));
+      else c.removeAttribute("d");
+    });
     Array.prototype.forEach.call(tbody.children, function(tr){ tr.classList.toggle("ativo", tr.dataset.uf === uf); });
+    Array.prototype.forEach.call(document.querySelectorAll("#legenda .marca"), function(m){
+      m.classList.toggle("ativo", m.dataset.uf === uf);
+    });
   }
 
   function mostrar(uf, x, y){
+    if (dicaAtual === "uf:" + uf) return posicionar(x, y);
+    dicaAtual = "uf:" + uf;
     var info = porUf[uf], nome = D.nomes[uf] || uf;
     dica.innerHTML = "";
     var t = document.createElement("strong");
@@ -355,6 +424,8 @@
   }
 
   function mostrarPonto(i, x, y){
+    if (dicaAtual === "item:" + i) return posicionar(x, y);
+    dicaAtual = "item:" + i;
     var item = itens[i];
     dica.innerHTML = "";
     var t = document.createElement("strong"); t.textContent = item.inst.nome; dica.appendChild(t);
@@ -373,7 +444,7 @@
     dica.style.top = top + "px";
   }
 
-  function esconder(){ dica.classList.remove("visivel"); destacar(null); }
+  function esconder(){ dicaAtual = null; dica.classList.remove("visivel"); destacar(null); }
 
   function apontar(e){
     var ponto = e.target.closest && e.target.closest("[data-item]");

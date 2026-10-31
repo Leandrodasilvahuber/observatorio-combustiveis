@@ -1,20 +1,22 @@
+/* Escala do mapa (--esc-0 mais barato ... --esc-3 mais caro): um tom só, azul.
+   No escuro ela inverte a luminosidade, para o mais caro não sumir no fundo. */
 :root{
   color-scheme:light;
   --fundo:#f7f6f2;--cartao:#ffffff;--texto:#1d1b26;--texto-2:#5d5a6b;--linha:#e6e3dc;--sem-dado:#dcd9d2;
-  --f1:#2fb876;--f2:#9ccf4f;--f3:#ffc93c;--f4:#ff8a3d;--f5:#e8455c;--destaque:#1d1b26;
+  --esc-0:#86b6ef;--esc-1:#3987e5;--esc-2:#1c5cab;--esc-3:#0d366b;--destaque:#1d1b26;
   --refinaria:#ff8a3d;--refinaria-borda:#c95a12;--porto:#4aa8ff;--porto-borda:#1f5fa8;--etanol:#ffe066;--etanol-borda:#2e8b3e;--rosto:#2a2233;
   --acento:#7a5cff;--airflow:#0d6fd6;--dbt:#e2522f;--aws:#c46f00;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   color-scheme:dark;
   --fundo:#17161c;--cartao:#211f28;--texto:#f1eff7;--texto-2:#b9b5c8;--linha:#35323f;--sem-dado:#3a3744;
-  --f1:#27a868;--f2:#8bbf42;--f3:#f0b92e;--f4:#f27a2f;--f5:#d93a52;--destaque:#ffffff;
+  --esc-0:#184f95;--esc-1:#3987e5;--esc-2:#6da7ec;--esc-3:#b7d3f6;--destaque:#ffffff;
   --acento:#a08cff;--airflow:#5aa9ff;--dbt:#ff7a5c;--aws:#ffa53a;
 }}
 :root[data-theme="dark"]{
   color-scheme:dark;
   --fundo:#17161c;--cartao:#211f28;--texto:#f1eff7;--texto-2:#b9b5c8;--linha:#35323f;--sem-dado:#3a3744;
-  --f1:#27a868;--f2:#8bbf42;--f3:#f0b92e;--f4:#f27a2f;--f5:#d93a52;--destaque:#ffffff;
+  --esc-0:#184f95;--esc-1:#3987e5;--esc-2:#6da7ec;--esc-3:#b7d3f6;--destaque:#ffffff;
   --acento:#a08cff;--airflow:#5aa9ff;--dbt:#ff7a5c;--aws:#ffa53a;
 }
 *{box-sizing:border-box}
@@ -28,24 +30,17 @@ header{margin-bottom:10px;display:flex;align-items:flex-start;justify-content:sp
 .video svg{width:22px;height:16px}
 h1{font-size:1.35rem;margin:0 0 2px;line-height:1.2}
 h1::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;vertical-align:2px;
-  background:linear-gradient(135deg,var(--f1),var(--f3),var(--f5))}
+  background:linear-gradient(135deg,var(--esc-0),var(--esc-3))}
 .sub{color:var(--texto-2);margin:0;font-size:.85rem}
 .etanol{margin:6px 0 0;font-size:.85rem;color:var(--texto-2)}
 .etanol:empty{display:none}
-.etanol b{color:var(--f1)}
+.etanol b{color:var(--texto)}
 .produtos{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
-.produtos button{font:inherit;font-size:.85rem;padding:4px 12px 4px 8px;border-radius:999px;cursor:pointer;
-  border:1px solid var(--linha);background:var(--cartao);color:var(--texto);display:inline-flex;align-items:center;gap:6px}
-.produtos button::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--cor-produto,var(--acento))}
-.produtos button[aria-pressed="true"]{background:var(--cor-produto,var(--acento));border-color:var(--cor-produto,var(--acento));
-  color:#fff;font-weight:600}
-.produtos button[aria-pressed="true"]::before{background:#fff}
-.produtos [data-produto="GASOLINA"]{--cor-produto:#e8455c}
-.produtos [data-produto="GASOLINA ADITIVADA"]{--cor-produto:#c2389b}
-.produtos [data-produto="ETANOL"]{--cor-produto:#1f9d5c}
-.produtos [data-produto="DIESEL"]{--cor-produto:#d9731f}
-.produtos [data-produto="DIESEL S10"]{--cor-produto:#b38600}
-.produtos [data-produto="GNV"]{--cor-produto:#2f80d6}
+.produtos button{font:inherit;font-size:.85rem;padding:5px 14px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--linha);background:var(--cartao);color:var(--texto);transition:background .15s,border-color .15s}
+/* Botões neutros: a única cor de dado na página é a escala do mapa. */
+.produtos button:hover{border-color:var(--texto-2)}
+.produtos button[aria-pressed="true"]{background:var(--texto);border-color:var(--texto);color:var(--cartao);font-weight:600}
 .grade{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;align-items:stretch}
 .cartao{background:var(--cartao);border:1px solid var(--linha);border-radius:14px;padding:10px 12px}
 /* O mapa ocupa a altura da tela; legenda e camadas ficam por cima, nos cantos
@@ -55,13 +50,21 @@ h1::before{content:"";display:inline-block;width:10px;height:10px;border-radius:
 #mapa{width:100%;height:calc(100vh - 225px);min-height:380px;display:block}
 .tabela{contain:size;overflow:auto;padding-top:0;-webkit-overflow-scrolling:touch}
 .sobre-mapa{position:absolute;background:color-mix(in srgb,var(--cartao) 82%,transparent);border-radius:10px;padding:6px 8px}
-.legenda{left:10px;bottom:10px;width:min(300px,45%)}
+.legenda{left:10px;bottom:10px;width:min(320px,48%);padding:8px 10px}
 #camadas{right:10px;top:10px}
 #camadas:empty{display:none}
 th:nth-child(n+4),td:nth-child(n+4){display:none}
 td:nth-child(2){white-space:nowrap}
-#mapa .uf{stroke:var(--cartao);stroke-width:1;stroke-linejoin:round;cursor:pointer;outline:none;transition:fill .25s}
-#mapa #contorno{fill:none;stroke:var(--destaque);stroke-width:2;pointer-events:none}
+/* Sombra leve sob o país inteiro; os estados se separam por um fio da cor do cartão. */
+#mapa .estados{filter:drop-shadow(0 2px 4px rgba(0,0,0,.14))}
+#mapa .uf{stroke:var(--cartao);stroke-width:1.2;stroke-linejoin:round;cursor:pointer;outline:none;transition:fill .3s}
+/* Destaque em dois traços (halo da cor do cartão + linha de contraste): aparece
+   tanto no tom mais claro quanto no mais escuro da escala. */
+#mapa #contorno-halo{fill:none;stroke:var(--cartao);stroke-width:5;stroke-linejoin:round;pointer-events:none}
+#mapa #contorno{fill:none;stroke:var(--destaque);stroke-width:2.2;stroke-linejoin:round;pointer-events:none}
+/* Sigla dos estados grandes, com halo para ler sobre qualquer tom da escala. */
+#mapa .sigla{font-size:11px;font-weight:700;letter-spacing:.02em;fill:var(--texto);stroke:var(--cartao);stroke-width:3;
+  stroke-linejoin:round;paint-order:stroke;text-anchor:middle;dominant-baseline:central;pointer-events:none;opacity:.85}
 #mapa .ponto{cursor:pointer}
 #mapa .boneco{transform-box:fill-box;transform-origin:50% 100%;transition:transform .15s}
 #mapa .ponto:hover .boneco,#mapa .ponto:focus .boneco{transform:scale(1.35) translateY(-1px)}
@@ -69,7 +72,7 @@ td:nth-child(2){white-space:nowrap}
 /* "backwards": depois de surgir, a animação larga o transform e o hover volta a valer. */
 #mapa .boneco{animation:surgir .4s cubic-bezier(.3,1.6,.6,1) backwards}
 @keyframes surgir{from{opacity:0;transform:translateY(-6px) scale(.6)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){#mapa .boneco{animation:none}#mapa .boneco,#mapa .uf{transition:none}}
+@media (prefers-reduced-motion:reduce){#mapa .boneco{animation:none}#mapa .boneco,#mapa .uf,.legenda .marca{transition:none}}
 .gota{stroke-width:1.2;stroke-linejoin:round}
 /* Contorno claro para o boneco não sumir em estado da mesma cor. */
 .halo-boneco{fill:none;stroke:#fff;stroke-width:5;stroke-linejoin:round;opacity:.9}
@@ -110,9 +113,20 @@ td:nth-child(2){white-space:nowrap}
 .brilho{fill:#fff;opacity:.85}
 .boca{fill:none;stroke:var(--rosto);stroke-width:1;stroke-linecap:round}
 .bochecha{fill:#ff6f91;opacity:.55}
-.legenda{display:flex;gap:2px}
-.legenda div{flex:1;font-size:.72rem;color:var(--texto-2);font-variant-numeric:tabular-nums}
-.legenda span{display:block;height:8px;border-radius:4px;margin-bottom:3px}
+/* Legenda: a escala contínua, com um tique por estado na posição do preço dele. */
+.legenda .titulo-escala{font-size:.72rem;font-weight:600;color:var(--texto-2);margin-bottom:5px}
+.legenda .escala{position:relative;height:10px;border-radius:5px;margin:8px 0 4px;
+  background:linear-gradient(to right,var(--esc-0),var(--esc-1),var(--esc-2),var(--esc-3));
+  background:linear-gradient(in oklab to right,var(--esc-0),var(--esc-1),var(--esc-2),var(--esc-3))}
+.legenda .marca{position:absolute;top:-4px;width:2px;height:18px;margin-left:-1px;border-radius:1px;
+  background:var(--texto);opacity:.35;transition:opacity .15s,transform .15s}
+.legenda .marca.ativo{opacity:1;transform:scaleX(1.5)}
+.legenda .marca.ativo::after{content:attr(data-uf);position:absolute;bottom:20px;left:50%;transform:translateX(-50%) scaleX(.67);
+  font-size:.68rem;font-weight:700;color:var(--texto)}
+.legenda .extremos{display:flex;justify-content:space-between;gap:8px;font-size:.72rem;color:var(--texto-2);
+  font-variant-numeric:tabular-nums}
+.legenda .extremos b{color:var(--texto);font-weight:600}
+.legenda .extremos span:last-child{text-align:right}
 .mostrar-grupo{display:flex;flex-direction:column;gap:4px}
 .mostrar{display:inline-flex;align-items:center;gap:6px;font-size:.84rem;cursor:pointer;width:max-content}
 .mostrar svg{width:21px;height:26px;flex:none}
@@ -149,7 +163,8 @@ th:nth-child(2),td:nth-child(2){text-align:left}
 td:first-child{color:var(--texto-2);width:2.5em}
 tbody tr{cursor:default}
 tbody tr.ativo{background:var(--linha)}
-.cor{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.cor{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px;
+  box-shadow:0 0 0 1px var(--linha)}
 .bandeira-uf{display:inline-block;width:21px;height:15px;border-radius:3px;margin-right:6px;vertical-align:-3px;
   background-repeat:no-repeat;box-shadow:0 0 0 1px var(--linha)}
 .dica{position:fixed;pointer-events:none;z-index:10;min-width:200px;max-width:280px;padding:10px 12px;border-radius:10px;
@@ -186,7 +201,7 @@ tbody tr.ativo{background:var(--linha)}
   /* Botões de produto numa linha só, rolando para o lado. */
   .produtos{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
   .produtos button{flex:none}
-  .legenda div{font-size:.62rem}
+  .legenda{width:auto}
   .dica{max-width:calc(100vw - 16px);min-width:0}
 }
 @media (max-width:480px){

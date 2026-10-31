@@ -9,6 +9,7 @@ GET <base>                       home: mapa do Brasil com o ranking de preço po
 GET <base>?formato=json          JSON do último período (resultados/latest.json)
 GET <base>?periodo=AAAA-MM-DD    período que termina nessa data (mapa ou JSON)
 GET <base>/estilo.css, mapa.js   arquivos da página (a CSP do site bloqueia inline)
+GET <base>/base.js               contornos das UFs e instalações (mudam só com deploy)
 """
 
 import base64
@@ -29,6 +30,8 @@ CABECALHOS = {
     "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
 }
 HTML = "text/html; charset=utf-8"
+# Estático pedido com o ?v= do conteúdo atual: a URL muda a cada deploy.
+CACHE_IMUTAVEL = "public, max-age=31536000, immutable"
 
 s3 = boto3.client("s3")
 
@@ -53,6 +56,14 @@ MAPA = json.loads(_ler("mapa_brasil.json"))
 # cidade), desenhados por cima do mapa.
 INSTALACOES = json.loads(_ler("instalacoes.json"))
 
+# Contornos e instalações vão num script versionado à parte: são ~40 KB que
+# não mudam entre períodos e ficam no cache do navegador.
+BASE_JS = (
+    "window.OBS_BASE="
+    + json.dumps({"mapa": MAPA, "instalacoes": INSTALACOES}, ensure_ascii=False, separators=(",", ":"))
+    + ";\n"
+)
+
 # Página do mapa. Os dados entram no lugar de __DADOS__; o resto é estático.
 PAGINA = _ler("pagina.html")
 
@@ -69,6 +80,7 @@ PAGINA_ERRO = """<!doctype html>
 ESTATICOS = {
     "/estilo.css": (_ler("estilo.css"), "text/css; charset=utf-8"),
     "/mapa.js": (_ler("mapa.js"), "text/javascript; charset=utf-8"),
+    "/base.js": (BASE_JS, "text/javascript; charset=utf-8"),
     # Bandeiras das UFs lado a lado, geradas por scripts/gerar_bandeiras.py.
     "/bandeiras.png": (_ler_binario("bandeiras.png"), "image/png"),
 }
@@ -99,17 +111,20 @@ def _estatico(nome: str) -> str:
     return f"{_base()}{nome}?v={VERSAO[nome]}"
 
 
-def _resposta(status: int, corpo, tipo="application/json; charset=utf-8") -> dict:
+def _resposta(status: int, corpo, tipo="application/json; charset=utf-8", cache=None) -> dict:
+    cabecalhos = {**CABECALHOS, "Content-Type": tipo}
+    if cache:
+        cabecalhos["Cache-Control"] = cache
     if isinstance(corpo, bytes):
         return {
             "statusCode": status,
-            "headers": {**CABECALHOS, "Content-Type": tipo},
+            "headers": cabecalhos,
             "body": base64.b64encode(corpo).decode(),
             "isBase64Encoded": True,
         }
     if not isinstance(corpo, str):
         corpo = json.dumps(corpo, ensure_ascii=False)
-    return {"statusCode": status, "headers": {**CABECALHOS, "Content-Type": tipo}, "body": corpo}
+    return {"statusCode": status, "headers": cabecalhos, "body": corpo}
 
 
 def _erro(status: int, mensagem: str, formato: str = "json") -> dict:
@@ -134,14 +149,15 @@ def _periodo_valido(valor: str) -> bool:
 
 
 def _html(resumo: dict) -> str:
-    """Mapa do Brasil por produto: cada UF colorida pela faixa do ranking de
-    preço médio, com os números ao passar o mouse e uma tabela de ranking."""
+    """Mapa do Brasil por produto: cada UF colorida pelo preço médio numa escala
+    contínua do mais barato ao mais caro, com os números ao passar o mouse e uma
+    tabela de ranking."""
     dados = {
         "periodo": resumo["periodo"],
+        # Ausente nos resumos publicados antes da janela por produto.
+        "periodo_por_produto": resumo.get("periodo_por_produto", {}),
         "precos": resumo["preco_medio_por_uf"],
         "etanol": {k: v for k, v in resumo["etanol_vs_gasolina"].items() if k != "melhores_para_etanol"},
-        "mapa": MAPA,
-        "instalacoes": INSTALACOES,
         "nomes": NOMES_UF,
         "bandeiras": _estatico("/bandeiras.png"),
     }
@@ -149,6 +165,7 @@ def _html(resumo: dict) -> str:
     json_dados = json.dumps(dados, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
     return (
         PAGINA.replace("__ESTILO__", _estatico("/estilo.css"))
+        .replace("__BASE__", _estatico("/base.js"))
         .replace("__SCRIPT__", _estatico("/mapa.js"))
         .replace("__DADOS__", json_dados)
     )
@@ -179,13 +196,16 @@ def lambda_handler(event, context):
 
 def _get(event) -> dict:
     rota = _rota(event.get("rawPath", "/"))
+    params = event.get("queryStringParameters") or {}
     if rota in ESTATICOS:
         corpo, tipo = ESTATICOS[rota]
-        return _resposta(200, corpo, tipo)
+        # Sem o hash atual (HTML antigo em cache pedindo outra versão), o
+        # conteúdo não corresponde à URL e fica só com o cache curto.
+        cache = CACHE_IMUTAVEL if params.get("v") == VERSAO[rota] else None
+        return _resposta(200, corpo, tipo, cache)
     if rota != "/":
         return _erro(404, "Rota não encontrada")
 
-    params = event.get("queryStringParameters") or {}
     formato = params.get("formato", "html")
     if formato not in ("json", "html"):
         return _erro(400, "formato deve ser json ou html")
@@ -199,9 +219,11 @@ def _get(event) -> dict:
     try:
         objeto = s3.get_object(Bucket=os.environ["BUCKET_NAME"], Key=chave)
     except ClientError as e:
-        # Na AWS, objeto inexistente vira AccessDenied quando a role não tem
-        # ListBucket irrestrito; nos dois casos o período não existe para a API.
-        if e.response["Error"]["Code"] in ("NoSuchKey", "404", "AccessDenied", "403"):
+        # A role tem ListBucket, então objeto inexistente chega como NoSuchKey.
+        # AccessDenied é erro de configuração e sobe como erro da Lambda (502 na
+        # Function URL): não pode passar por "período não encontrado", nem no
+        # teste de fumaça do deploy.
+        if e.response["Error"]["Code"] in ("NoSuchKey", "404"):
             if periodo is None:
                 return _erro(
                     404, "Nenhum período publicado ainda: o primeiro ciclo do pipeline ainda não terminou.", formato

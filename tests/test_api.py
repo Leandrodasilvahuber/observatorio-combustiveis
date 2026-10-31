@@ -134,13 +134,26 @@ def test_html_e_o_mapa_com_os_dados_do_periodo(s3):
     assert resposta["statusCode"] == 200
     assert resposta["headers"]["Content-Type"].startswith("text/html")
     dados = _dados_da_pagina(resposta["body"])
-    assert len(dados["mapa"]["ufs"]) == 27
-    assert set(dados["mapa"]["ufs"]) == set(dados["nomes"])
+    assert "mapa" not in dados  # vai no base.js, que fica no cache do navegador
+    assert set(handler.MAPA["ufs"]) == set(dados["nomes"])
     assert {(l["uf"], l["produto"], l["preco_medio"]) for l in dados["precos"]} == {
         ("SP", "GASOLINA", 6.412),
         ("SP", "ETANOL", 3.9),
     }
     assert dados["periodo"] == RESUMO["periodo"]
+    assert dados["periodo_por_produto"] == {}  # resumo antigo, sem a janela por produto
+
+
+def test_base_js_leva_contornos_e_instalacoes(s3):
+    corpo = handler.lambda_handler(evento(), None)["body"]
+    assert f'src="/base.js?v={handler.VERSAO["/base.js"]}"' in corpo
+    assert corpo.index("/base.js?v=") < corpo.index("/mapa.js?v=")
+    js = handler.lambda_handler(evento(path="/base.js"), None)["body"]
+    prefixo = "window.OBS_BASE="
+    assert js.startswith(prefixo)
+    base = json.loads(js[len(prefixo) :].rstrip().rstrip(";"))
+    assert len(base["mapa"]["ufs"]) == 27
+    assert base["instalacoes"] == handler.INSTALACOES
 
 
 def test_html_nao_deixa_dado_fechar_o_script(s3):
@@ -159,15 +172,18 @@ def test_outras_rotas_e_metodos(s3):
     assert handler.lambda_handler(evento({"formato": "xml"}), None)["statusCode"] == 400
 
 
-def test_access_denied_da_404(monkeypatch):
-    # Na AWS, sem ListBucket, objeto inexistente chega como AccessDenied.
+@pytest.mark.parametrize("params", [None, {"periodo": "2020-01-01"}])
+def test_access_denied_nao_vira_404(monkeypatch, params):
+    # A role tem ListBucket: AccessDenied é permissão quebrada, não período
+    # inexistente, e sobe como erro (502 na Function URL).
     class S3Negado:
         def get_object(self, Bucket, Key):
             raise ClientError({"Error": {"Code": "AccessDenied"}}, "GetObject")
 
     monkeypatch.setattr(handler, "s3", S3Negado())
     monkeypatch.setenv("BUCKET_NAME", "bucket")
-    assert handler.lambda_handler(evento({"periodo": "2020-01-01"}), None)["statusCode"] == 404
+    with pytest.raises(ClientError):
+        handler.lambda_handler(evento(params), None)
 
 
 def test_pagina_respeita_a_csp_do_site(s3):
@@ -194,6 +210,16 @@ def test_estaticos_com_versao(s3):
     assert png["headers"]["Content-Type"] == "image/png"
     assert png["isBase64Encoded"] and base64.b64decode(png["body"]).startswith(b"\x89PNG")
     assert s3.chaves_lidas == ["resultados/latest.json"]
+
+
+def test_estatico_com_hash_atual_tem_cache_longo(s3):
+    v = handler.VERSAO["/mapa.js"]
+    atual = handler.lambda_handler(evento({"v": v}, path="/mapa.js"), None)
+    assert atual["headers"]["Cache-Control"] == handler.CACHE_IMUTAVEL
+    # Hash de outra versão (HTML antigo em cache) ou sem hash: cache curto.
+    for params in ({"v": "0000000000"}, None):
+        resposta = handler.lambda_handler(evento(params, path="/mapa.js"), None)
+        assert resposta["headers"]["Cache-Control"] == "max-age=300"
 
 
 @pytest.mark.parametrize("path", ["/gasolina", "/gasolina/"])

@@ -44,19 +44,29 @@ resource "aws_iam_role_policy_attachment" "logs" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# Leitura apenas do prefixo de resultados. Sem ListBucket, um período
-# inexistente chega como AccessDenied, que o handler trata como 404.
+# Leitura apenas do prefixo de resultados. O ListBucket faz um período
+# inexistente chegar como NoSuchKey (404); assim AccessDenied fica sendo só
+# erro de permissão, e o handler o deixa subir (502 na Function URL) em vez de
+# esconder. O ListBucket não aceita restrição por chave aqui: a Lambda vê os
+# nomes do bucket inteiro, mas só lê o conteúdo de resultados/.
 resource "aws_iam_role_policy" "resultados" {
   name = "leitura-resultados"
   role = aws_iam_role.api.id
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = "s3:GetObject"
-      Resource = "${var.bucket_arn}/${var.prefixo_resultados}/*"
-    }]
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "s3:GetObject"
+        Resource = "${var.bucket_arn}/${var.prefixo_resultados}/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = var.bucket_arn
+      },
+    ]
   })
 }
 
