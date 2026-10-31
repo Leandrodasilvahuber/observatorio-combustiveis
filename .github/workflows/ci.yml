@@ -1,12 +1,12 @@
 # CI/CD do Observatório.
-#   push e pull request: análise estática + testes unitários
-#   push na main: depois dos dois, terraform apply na AWS (papel via OIDC,
-#   sem chave guardada no GitHub) e teste de fumaça no site
+#   push (main ou prod) e pull request: análise estática + testes unitários
+#   push na prod: depois dos dois, terraform apply na AWS (papel via OIDC,
+#   sem chave guardada no GitHub) e teste de fumaça no site. A main só testa.
 name: CI/CD
 
 on:
   push:
-    branches: [main]
+    branches: [main, prod]
   pull_request:
   workflow_dispatch:
 
@@ -106,7 +106,7 @@ jobs:
   deploy:
     name: Deploy na AWS
     needs: [estatico, testes]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/prod'
     runs-on: ubuntu-24.04
     environment: producao
     permissions:
@@ -150,13 +150,16 @@ jobs:
 
       # A rota /gasolina é da CloudFront do site (outro repositório); enquanto
       # ela não existir, o site responde com a página inicial, e o teste falha.
+      # Passa o mapa (200 com o bloco de dados) ou, antes do primeiro ciclo, o
+      # 404 de "nenhum período publicado"; qualquer outra página de erro falha.
       - name: Teste de fumaça
         if: vars.SITE_URL != ''
         working-directory: .
         run: |
           for tentativa in 1 2 3 4 5 6; do
             codigo=$(curl -s -o resposta.html -w '%{http_code}' "${{ vars.SITE_URL }}/gasolina")
-            if [[ "$codigo" =~ ^(200|404)$ ]] && grep -q 'Preço dos combustíveis por estado' resposta.html; then
+            if { [[ "$codigo" == 200 ]] && grep -q '<script id="dados"' resposta.html; } \
+              || { [[ "$codigo" == 404 ]] && grep -q 'Nenhum período publicado' resposta.html; }; then
               echo "OK: HTTP $codigo"; exit 0
             fi
             echo "tentativa $tentativa: HTTP $codigo"; sleep 20

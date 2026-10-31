@@ -194,17 +194,27 @@ flowchart LR
 | Detalhe | Como fica |
 |---|---|
 | Autenticação da origem | Function URL com `AWS_IAM`; só esta distribuição chama (OAC + duas permissões no Terraform deste repositório) |
-| Cache | Política própria `dev-ecommerce-gasolina`: respeita o `max-age=300` da Lambda e põe a query string na chave (`?formato=json` e `?periodo=` são respostas diferentes). A gerenciada `UseOriginCacheControlHeaders-QueryStrings` não serve: inclui o `Host` na chave e o repassa à origem, e a Function URL responde 403 |
+| Cache | Política própria `dev-ecommerce-gasolina` (no template do site, `GasolinaCachePolicy`): respeita o `max-age=300` da Lambda e põe na chave só as query strings que a Lambda usa (`formato`, `periodo` e o `v` dos estáticos), então `?x=<aleatório>` não fura o cache. A gerenciada `UseOriginCacheControlHeaders-QueryStrings` não serve: inclui o `Host` na chave e o repassa à origem, e a Function URL responde 403 |
 | CSP do site | `script-src 'self'; style-src 'self'`: por isso CSS e JS são arquivos (`/gasolina/estilo.css`, `/gasolina/mapa.js`), e só o bloco de dados `application/json` é inline |
 | Cache de CSS/JS | Os links levam um hash do conteúdo (`?v=...`), então um deploy novo aparece sem invalidação |
 | Ligação entre os stacks | O Terraform publica o domínio da Function URL em `/observatorio/dev/api-origem` (SSM), que o template do site lê a cada deploy |
 
 ### O mapa
 
-- **Cores pelo ranking:** os estados com dados do produto são ordenados pelo
-  preço médio e divididos em **cinco faixas**, do verde (mais barato) ao
-  vermelho (mais caro). A cor mostra a faixa, não o valor absoluto; preços
-  empatados ficam na mesma faixa e estados sem coletas ficam em cinza.
+- **Cor pelo preço:** uma escala contínua de um tom só (azul), igual para
+  todos os produtos e estados, vai do preço médio mais barato ao mais caro do
+  produto escolhido; a cor é proporcional ao valor (estados com preços
+  próximos ficam com tons próximos). No tema claro, mais escuro é mais caro; no
+  escuro a luminosidade se inverte, para o mais caro não sumir no fundo.
+  Estados sem coletas ficam em cinza. Os tons (`--esc-0` a `--esc-3` em
+  `api/estilo.css`) passaram no validador de paleta (um tom, luminosidade
+  monotônica, ponta clara com contraste mínimo de 2:1 sobre o cartão).
+- **Legenda:** o degradê da escala com um tique por estado na posição do preço
+  dele e os preços das duas pontas; o estado em destaque no mapa ou na lista
+  também se destaca na legenda.
+- **Visual:** siglas dos estados grandes no mapa, sombra leve sob o país,
+  contorno de destaque com halo (visível em qualquer tom da escala) e botões
+  de produto neutros, para a escala ser a única cor de dado da página.
 - **Dica de cada estado:** ao passar o mouse, tocar ou focar pelo teclado,
   aparecem bandeira, posição no ranking, preço médio, mínimo, máximo, coletas
   e a refinaria, o porto ou o polo de etanol mais perto (em linha reta, a
@@ -240,7 +250,7 @@ flowchart LR
 flowchart LR
     PUSH["push / pull request"] --> E["Análise estática<br/>ruff · shellcheck · actionlint<br/>dbt parse · terraform fmt/validate · tflint"]
     PUSH --> T["Testes unitários<br/>pytest"]
-    E --> G{"push na main?"}
+    E --> G{"push na prod?"}
     T --> G
     G -- "não" --> FIM(["fim"])
     G -- "sim" --> D["Deploy (ambiente producao)"]
@@ -257,10 +267,12 @@ flowchart LR
 ```
 
 - **Workflow único** (`.github/workflows/ci.yml`): análise estática e testes em
-  todo push e pull request; o deploy só roda em push na `main`, depois dos dois.
+  todo push (`main` e `prod`) e pull request; o deploy só roda em push na
+  `prod`, depois dos dois. A `main` é a branch de trabalho e só roda os testes;
+  publicar é levar a `main` para a `prod` (`git push origin main:prod`).
 - **Sem chaves de acesso:** o GitHub Actions assume o papel
   `github-deploy-observatorio` via OIDC. O papel só aceita o ambiente
-  `producao` deste repositório, e o ambiente só aceita a branch `main`. O
+  `producao` deste repositório, e o ambiente só aceita a branch `prod`. O
   GitHub identifica o repositório pelos IDs numéricos (subject imutável:
   `repo:Leandrodasilvahuber@45015902/observatorio-combustiveis@1429861598`),
   então recriar um repositório com o mesmo nome não herda o acesso.
@@ -277,7 +289,7 @@ flowchart LR
 |---|---|
 | Rede | EC2 sem portas de entrada; Airflow só em localhost, acessado por túnel do Session Manager |
 | EC2 | IMDSv2 obrigatório (hop limit 2), EBS criptografado, senhas geradas no primeiro boot |
-| IAM | Um papel por componente com privilégio mínimo: EC2 (bucket do projeto), Lambda (só `resultados/`, sem `ListBucket`), Scheduler (ligar só esta instância) |
+| IAM | Um papel por componente com privilégio mínimo: EC2 (bucket do projeto), Lambda (lê só `resultados/`; `ListBucket` no bucket, que mostra os nomes das chaves, para distinguir 404 de erro de permissão), Scheduler (ligar só esta instância) |
 | Lambda | Function URL com `AWS_IAM`, chamada só pela CloudFront via OAC; o código só muda via Terraform |
 | CI/CD | OIDC por ambiente; papel de deploy restrito a recursos `observatorio-dev-*`, sem poder alterar a si mesmo. Todo papel que ele cria ou altera carrega a política-limite `observatorio-dev-limite-papeis` (permissions boundary), que ele não consegue remover: nenhuma política inline vai além do bucket do projeto, logs, Session Manager e ligar a EC2. `PassRole` só para EC2, Lambda e Scheduler, e `RunInstances` só para t3.micro/small/medium |
 | Página | CSP do site sem inline; dados escapados para não fechar o `<script>`; texto dos dados só por `textContent` |
@@ -449,7 +461,7 @@ o arquivo anterior.
 |---|---|---|
 | `staging.stg_precos` | view | CNPJ só com dígitos, `numeric(10,3)`, `date`, municípios em maiúsculas, bandeira vazia vira `SEM BANDEIRA`; uma linha por posto, produto e dia (fica a carga mais recente) |
 | `marts.fct_precos` | incremental (merge) | Reprocessa os últimos 35 dias e faz upsert por `cnpj, produto, data_coleta` |
-| `marts.agg_uf_periodo` | tabela | Média, mínimo, máximo e coletas por UF e produto nos 10 dias mais recentes |
+| `marts.agg_uf_periodo` | tabela | Média, mínimo, máximo e coletas por UF e produto nos 10 dias mais recentes de cada produto |
 | `marts.agg_etanol_compensa` | tabela | Gasolina comum x etanol por município; `etanol_compensa` se a razão for ≤ 0,70 |
 
 Testes:
@@ -465,6 +477,8 @@ Testes:
 As linhas reprovadas ficam em `dbt_falhas.<teste>` para consulta. Corrigida a
 raw, o próximo build passa normalmente. Para reprocessar tudo:
 `docker compose exec airflow /opt/dbt/bin/dbt build --full-refresh --project-dir /opt/airflow/dbt --profiles-dir /opt/airflow/dbt`.
+Atenção: a raw guarda só 45 dias de cargas, então o `--full-refresh` refaz o
+`fct_precos` só com esse período e o histórico anterior se perde.
 
 ## API
 
@@ -476,14 +490,17 @@ localmente, na raiz.
 | `GET /gasolina` | Mapa do último período |
 | `GET /gasolina?formato=json` | JSON do último período (`resultados/latest.json`) |
 | `GET /gasolina?periodo=AAAA-MM-DD` | Período que termina nessa data (mapa, ou JSON com `formato=json`) |
-| `GET /gasolina/estilo.css`, `/gasolina/mapa.js`, `/gasolina/bandeiras.png` | Arquivos da página (o PNG vai em base64, `isBase64Encoded`) |
+| `GET /gasolina/estilo.css`, `/gasolina/mapa.js`, `/gasolina/base.js`, `/gasolina/bandeiras.png` | Arquivos da página; `base.js` leva os contornos das UFs e as instalações (o PNG vai em base64, `isBase64Encoded`) |
 | período em formato inválido | 400 (página HTML no mapa, JSON com `formato=json`) |
 | período inexistente | 404 (idem; antes do primeiro ciclo a página avisa que ainda não há período publicado) |
 | outro caminho / método | 404 / 405 |
 
-Todas as respostas têm `Cache-Control: max-age=300` e CORS aberto. A Lambda só
-pode ler `resultados/` (sem `ListBucket`: na AWS um período inexistente chega
-como `AccessDenied`, que o handler responde como 404). A conta tem cota de 10
+As respostas têm `Cache-Control: max-age=300` e CORS aberto; os estáticos
+pedidos com o `?v=` do conteúdo atual saem com cache de um ano (`immutable`).
+A Lambda só lê `resultados/` e tem `ListBucket` para que um período
+inexistente chegue como `NoSuchKey` (404); `AccessDenied` sobe como erro da
+Lambda (502 na Function URL), e o teste
+de fumaça do deploy falha. A conta tem cota de 10
 execuções concorrentes, que não permite reservar concorrência
 (`api_reserved_concurrency = -1`); o cache da CloudFront segura o volume.
 
@@ -492,6 +509,7 @@ O JSON publicado:
 ```json
 {
   "periodo": {"inicio": "2026-10-08", "fim": "2026-10-17", "dias": 10},
+  "periodo_por_produto": {"DIESEL": {"inicio": "2026-10-08", "fim": "2026-10-17"}, "...": {}},
   "gerado_em": "2026-10-22T13:48:30+00:00",
   "preco_medio_por_uf": [
     {"uf": "SP", "produto": "GASOLINA", "unidade": "R$ / litro",
@@ -519,8 +537,8 @@ janela mudou de 16 para 10 dias em outubro de 2026; arquivos antigos não têm
 
 ```mermaid
 flowchart TB
-    B["1. Bootstrap (local, credencial admin)<br/>bucket do state + papel OIDC"] --> GH["2. GitHub: variável AWS_DEPLOY_ROLE_ARN,<br/>SITE_URL e ambiente producao (só main)"]
-    GH --> P["3. push na main<br/>CI → terraform apply"]
+    B["1. Bootstrap (local, credencial admin)<br/>bucket do state + papel OIDC"] --> GH["2. GitHub: variável AWS_DEPLOY_ROLE_ARN,<br/>SITE_URL e ambiente producao (só prod)"]
+    GH --> P["3. push na prod<br/>CI → terraform apply"]
     P --> E["4. EC2 liga no primeiro boot,<br/>roda o ciclo e publica"]
     P --> L["5. lab_dist_system: push em prod<br/>CloudFront ganha /gasolina*"]
     E --> OK(["/gasolina no ar"])
@@ -544,8 +562,8 @@ flowchart TB
 2. **GitHub:** variáveis do repositório `AWS_DEPLOY_ROLE_ARN` (output acima),
    `CLOUDFRONT_DISTRIBUTION_ARN` (CloudFront do site) e `SITE_URL`
    (`https://www.leandrohuber.freeddns.org`), e o ambiente
-   `producao` restrito à branch `main`.
-3. **Push na `main`:** o CI roda a análise estática e os testes e depois o
+   `producao` restrito à branch `prod`.
+3. **Push na `prod`:** o CI roda a análise estática e os testes e depois o
    `terraform apply`. A EC2 liga, roda o primeiro ciclo (cerca de 10 min, com
    a instalação) e desliga sozinha.
 4. **Rota no site:** push em `prod` no `lab_dist_system`, que lê o parâmetro
@@ -557,7 +575,7 @@ histórico de resultados.
 
 ### Depois
 
-Qualquer push na `main` faz o deploy. Pela máquina local também funciona
+Qualquer push na `prod` faz o deploy; na `main`, só os testes. Pela máquina local também funciona
 (`make plan-aws` / `make deploy-aws`, com `AWS_PROFILE` no `.env`), usando o
 mesmo state no S3.
 
@@ -571,7 +589,7 @@ mesmo state no S3.
 | ANP mudou as URLs | Variable `anp_urls` no Airflow (lista JSON), sem alterar código |
 | ANP mudou o layout | A task `validar` lista as colunas ausentes; ajustar `APELIDOS` em `layout.py` |
 | Teste do dbt reprovado | Linhas em `dbt_falhas.<teste>`; o site segue com o último período bom |
-| Reprocessar tudo | `dbt build --full-refresh` dentro do contêiner do Airflow |
+| Reprocessar tudo | `dbt build --full-refresh` dentro do contêiner do Airflow (perde o histórico do fato com mais de 45 dias, que já saiu da raw) |
 | Mexer na EC2 | Ativar a manutenção antes de qualquer reboot e desativar ao terminar |
 | Regerar o mapa | `python scripts/gerar_mapa.py` (só se mudar a malha ou a simplificação) |
 | Regerar as bandeiras | `python scripts/gerar_bandeiras.py` (precisa do Pillow) |
